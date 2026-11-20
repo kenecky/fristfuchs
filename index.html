@@ -255,7 +255,7 @@
       </div>
       <div class="sheet-body">
         <div class="file-info">
-          <span class="doc-icon" aria-hidden="true">PDF</span>
+          <span class="doc-thumb" id="doc-file-thumb" aria-hidden="true"></span>
           <span class="doc-main"><span class="doc-name" id="doc-file-name"></span><span class="doc-meta" id="doc-file-meta"></span></span>
         </div>
         <label class="field"><span>Name des Dokuments</span>
@@ -268,7 +268,29 @@
       </div>
     </form>
   </dialog>
-  <input type="file" id="doc-file" accept="application/pdf,.pdf" hidden>
+  <input type="file" id="doc-file" accept="application/pdf,.pdf,image/*" hidden>
+
+  <!-- Dokument-Betrachter -->
+  <dialog id="dlg-viewer" class="viewer">
+    <div class="viewer-head">
+      <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+      <div class="viewer-titles">
+        <h2 id="viewer-title"></h2>
+        <span id="viewer-page" class="viewer-sub"></span>
+      </div>
+      <button type="button" class="icon-btn" id="viewer-rename" aria-label="Umbenennen" title="Umbenennen">✎</button>
+      <button type="button" class="icon-btn" id="viewer-delete" aria-label="Löschen" title="Löschen">🗑</button>
+    </div>
+    <div id="viewer-body" class="viewer-body"></div>
+    <div class="viewer-foot">
+      <div class="zoom">
+        <button type="button" class="icon-btn" id="viewer-zoom-out" aria-label="Verkleinern">−</button>
+        <button type="button" class="zoom-label" id="viewer-zoom" title="Auf 100 % zurücksetzen">100 %</button>
+        <button type="button" class="icon-btn" id="viewer-zoom-in" aria-label="Vergrößern">＋</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="viewer-share">Teilen</button>
+    </div>
+  </dialog>
 
   <datalist id="dl-categories"></datalist>
   <datalist id="dl-accounts"></datalist>

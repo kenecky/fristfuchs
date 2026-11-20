@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -461,6 +461,151 @@ function openDetail(id) {
   renderDocs(id);
 }
 
+/* ---------- Dokumente: Verarbeitung ---------- */
+
+const MAX_IMAGE_INPUT_BYTES = 40 * 1024 * 1024;
+const IMAGE_MAX_SIDE = 2400;   // längste Kante gespeicherter Fotos (gut lesbar, aber platzsparend)
+const THUMB_WIDTH = 160;
+
+const isImageDoc = d => (d.kind || (String(d.type).startsWith('image/') ? 'image' : 'pdf')) === 'image';
+
+let pdfjsPromise;
+function loadPdfJs() {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import('./vendor/pdfjs/pdf.min.mjs').then(lib => {
+      lib.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+      return lib;
+    }).catch(err => { pdfjsPromise = null; throw err; });
+  }
+  return pdfjsPromise;
+}
+// PDF.js übernimmt den Puffer in den Worker – deshalb immer eine Kopie übergeben
+async function openPdf(data) {
+  const lib = await loadPdfJs();
+  return lib.getDocument({ data: new Uint8Array(data.slice(0)), isEvalSupported: false }).promise;
+}
+
+function canvasToBlob(canvas, quality) {
+  return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('blob')), 'image/jpeg', quality));
+}
+function drawScaled(source, srcW, srcH, maxW, maxH = Infinity) {
+  const scale = Math.min(1, maxW / srcW, maxH / srcH);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(srcW * scale));
+  canvas.height = Math.max(1, Math.round(srcH * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+function loadImage(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
+    img.src = url;
+  });
+}
+
+async function pdfThumb(pdf) {
+  const page = await pdf.getPage(1);
+  const base = page.getViewport({ scale: 1 });
+  const viewport = page.getViewport({ scale: (THUMB_WIDTH * 2) / base.width });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL('image/jpeg', 0.75);
+}
+
+/** Liest eine Datei ein, erzeugt Vorschaubild und verkleinert große Fotos. */
+async function processFile(file) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name);
+  if (!isPdf && !isImage) throw new UserError('Bitte eine PDF-Datei oder ein Foto auswählen.');
+
+  if (isPdf) {
+    if (file.size > MAX_DOC_BYTES) throw new UserError(`Die PDF ist zu groß (max. ${fmtBytes(MAX_DOC_BYTES)}).`);
+    const data = await file.arrayBuffer();
+    let pages = null, thumb = null, locked = false;
+    try {
+      const pdf = await openPdf(data);
+      pages = pdf.numPages;
+      thumb = await pdfThumb(pdf);
+      pdf.destroy();
+    } catch (err) {
+      if (err && err.name === 'PasswordException') locked = true;
+      else if (err && err.name === 'InvalidPDFException') throw new UserError('Die PDF-Datei ist beschädigt oder ungültig.');
+    }
+    return { kind: 'pdf', type: 'application/pdf', fileName: file.name, data, size: data.byteLength, pages, thumb, locked };
+  }
+
+  if (file.size > MAX_IMAGE_INPUT_BYTES) throw new UserError(`Das Foto ist zu groß (max. ${fmtBytes(MAX_IMAGE_INPUT_BYTES)}).`);
+  let img;
+  try { img = await loadImage(file); }
+  catch { throw new UserError('Dieses Bildformat kann der Browser nicht öffnen. Bitte als JPG oder PNG speichern.'); }
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const keepOriginal = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+    && Math.max(w, h) <= IMAGE_MAX_SIDE && file.size <= 1.5 * 1024 * 1024;
+  let data, type, fileName = file.name;
+  if (keepOriginal) {
+    data = await file.arrayBuffer();
+    type = file.type;
+  } else {
+    const canvas = drawScaled(img, w, h, IMAGE_MAX_SIDE, IMAGE_MAX_SIDE);
+    data = await (await canvasToBlob(canvas, 0.85)).arrayBuffer();
+    type = 'image/jpeg';
+    fileName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+  }
+  const thumb = drawScaled(img, w, h, THUMB_WIDTH * 2).toDataURL('image/jpeg', 0.75);
+  return { kind: 'image', type, fileName, data, size: data.byteLength, originalSize: file.size, thumb };
+}
+
+class UserError extends Error {}
+const thumbTried = new Set();
+
+// Vorschaubilder für ältere Dokumente nachträglich erzeugen
+async function ensureThumb(doc) {
+  if (doc.thumb || doc.locked) return doc;
+  try {
+    if (isImageDoc(doc)) {
+      const img = await loadImage(new Blob([doc.data], { type: doc.type }));
+      doc.thumb = drawScaled(img, img.naturalWidth, img.naturalHeight, THUMB_WIDTH * 2).toDataURL('image/jpeg', 0.75);
+      doc.kind = 'image';
+    } else {
+      const pdf = await openPdf(doc.data);
+      doc.pages = pdf.numPages;
+      doc.thumb = await pdfThumb(pdf);
+      doc.kind = 'pdf';
+      pdf.destroy();
+    }
+    await docStore.put(doc);
+  } catch (err) {
+    if (err && err.name === 'PasswordException') { doc.locked = true; await docStore.put(doc).catch(() => {}); }
+  }
+  return doc;
+}
+
+function docMeta(d) {
+  const parts = [isImageDoc(d) ? 'Foto' : 'PDF'];
+  if (d.pages) parts.push(`${d.pages} ${d.pages === 1 ? 'Seite' : 'Seiten'}`);
+  if (d.locked) parts.push('passwortgeschützt');
+  parts.push(fmtBytes(d.size));
+  return parts.join(' · ');
+}
+function thumbHTML(d) {
+  return d.thumb
+    ? `<img src="${esc(d.thumb)}" alt="">`
+    : `<span>${isImageDoc(d) ? 'JPG' : 'PDF'}</span>`;
+}
+
+/* ---------- Dokumente: Liste in der Detailansicht ---------- */
+
 async function renderDocs(contractId) {
   const list = $('#doc-list');
   if (!list) return;
@@ -473,25 +618,33 @@ async function renderDocs(contractId) {
   list.innerHTML = docs.length
     ? docs.map(d => `
       <div class="doc" data-doc="${esc(d.id)}">
-        <button type="button" class="doc-icon" data-doc-action="open" aria-label="${esc(d.name)} öffnen">PDF</button>
+        <button type="button" class="doc-thumb" data-doc-action="open" aria-label="${esc(d.name)} öffnen">${thumbHTML(d)}</button>
         <button type="button" class="doc-main" data-doc-action="open">
           <span class="doc-name">${esc(d.name)}</span>
-          <span class="doc-meta">${fmtBytes(d.size)} · ${fmtDate(new Date(d.createdAt))}</span>
+          <span class="doc-meta">${docMeta(d)} · ${fmtDate(new Date(d.createdAt))}</span>
         </button>
         <button type="button" class="icon-btn" data-doc-action="rename" aria-label="Umbenennen" title="Umbenennen">✎</button>
         <button type="button" class="icon-btn" data-doc-action="delete" aria-label="Löschen" title="Löschen">🗑</button>
       </div>`).join('')
-    : '<p class="hint">Noch keine Dokumente. Hänge z. B. den Vertrag oder die Kündigungsbestätigung als PDF an.</p>';
+    : '<p class="hint">Noch keine Dokumente. Hänge z. B. den Vertrag als PDF an oder fotografiere die Kündigungsbestätigung.</p>';
+
+  const missing = docs.filter(d => !d.thumb && !d.locked && !thumbTried.has(d.id));
+  if (missing.length) {
+    for (const d of missing) { thumbTried.add(d.id); await ensureThumb(d); }
+    if (currentId === contractId) renderDocs(contractId);
+  }
 }
 
-/* Hochladen und Benennen */
+/* ---------- Dokumente: Hochladen und Benennen ---------- */
+
 let pendingFile = null;
 let renamingDocId = null;
 
-function openDocDialog({ title, fileName, meta, name }) {
+function openDocDialog({ title, fileName, meta, name, thumb, kind }) {
   $('#doc-form-title').textContent = title;
   $('#doc-file-name').textContent = fileName;
   $('#doc-file-meta').textContent = meta;
+  $('#doc-file-thumb').innerHTML = thumbHTML({ thumb, kind });
   const input = $('#doc-form').elements.docName;
   input.value = name;
   $('#dlg-doc').showModal();
@@ -499,16 +652,27 @@ function openDocDialog({ title, fileName, meta, name }) {
   input.select();
 }
 
-$('#doc-file').addEventListener('change', e => {
+$('#doc-file').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-  if (!isPdf) { toast('Bitte eine PDF-Datei auswählen.'); return; }
-  if (file.size > MAX_DOC_BYTES) { toast(`Die Datei ist zu groß (max. ${fmtBytes(MAX_DOC_BYTES)}).`); return; }
-  pendingFile = file;
-  renamingDocId = null;
-  openDocDialog({ title: 'Dokument hinzufügen', fileName: file.name, meta: fmtBytes(file.size), name: file.name.replace(/\.pdf$/i, '') });
+  const addBtn = $('#doc-add');
+  if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Wird verarbeitet …'; }
+  try {
+    const processed = await processFile(file);
+    pendingFile = processed;
+    renamingDocId = null;
+    let meta = docMeta(processed);
+    if (processed.originalSize && processed.originalSize > processed.size * 1.2) meta += ` (verkleinert von ${fmtBytes(processed.originalSize)})`;
+    openDocDialog({
+      title: 'Dokument hinzufügen', fileName: file.name, meta, thumb: processed.thumb, kind: processed.kind,
+      name: file.name.replace(/\.[^.]+$/, '').replace(/^(IMG|DSC|PXL|PHOTO|Screenshot|image)[_ -]?\d*.*$/i, '') || `Foto vom ${fmtDate(today())}`,
+    });
+  } catch (err) {
+    toast(err instanceof UserError ? err.message : 'Die Datei konnte nicht gelesen werden.');
+  } finally {
+    if (addBtn && addBtn.isConnected) { addBtn.disabled = false; addBtn.textContent = '＋ Dokument hinzufügen'; }
+  }
 });
 
 $('#doc-form').addEventListener('submit', async e => {
@@ -519,13 +683,11 @@ $('#doc-form').addEventListener('submit', async e => {
     if (renamingDocId) {
       const doc = await docStore.get(renamingDocId);
       if (doc) await docStore.put({ ...doc, name });
+      if (viewer.doc && viewer.doc.id === renamingDocId) $('#viewer-title').textContent = name;
       toast('Dokument umbenannt');
     } else if (pendingFile) {
-      const data = await pendingFile.arrayBuffer();
-      await docStore.put({
-        id: uid(), contractId: currentId, name, fileName: pendingFile.name,
-        type: 'application/pdf', size: pendingFile.size, createdAt: new Date().toISOString(), data,
-      });
+      const { originalSize, ...p } = pendingFile;
+      await docStore.put({ id: uid(), contractId: currentId, name, ...p, createdAt: new Date().toISOString() });
       toast('Dokument gespeichert');
     }
   } catch {
@@ -539,45 +701,263 @@ $('#doc-form').addEventListener('submit', async e => {
   renderDocs(currentId);
   updateStorageInfo();
 });
+$('#dlg-doc').addEventListener('close', () => { pendingFile = null; renamingDocId = null; });
 
-async function openDocument(id) {
+async function startRename(id) {
   const doc = await docStore.get(id);
   if (!doc) return;
-  const url = URL.createObjectURL(new Blob([doc.data], { type: doc.type || 'application/pdf' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  renamingDocId = id;
+  pendingFile = null;
+  openDocDialog({ title: 'Dokument umbenennen', fileName: doc.fileName, meta: docMeta(doc), name: doc.name, thumb: doc.thumb, kind: doc.kind });
+}
+async function deleteDoc(id) {
+  const doc = await docStore.get(id);
+  if (!doc || !confirm(`Dokument „${doc.name}“ wirklich löschen?`)) return false;
+  await docStore.remove(id);
+  await loadDocCounts();
+  renderAll();
+  renderDocs(currentId);
+  updateStorageInfo();
+  toast('Dokument gelöscht');
+  return true;
 }
 
-$('#dlg-detail').addEventListener('click', async e => {
+$('#dlg-detail').addEventListener('click', e => {
   if (e.target.closest('#doc-add')) { $('#doc-file').click(); return; }
   const btn = e.target.closest('[data-doc-action]');
   if (!btn) return;
   const id = btn.closest('[data-doc]').dataset.doc;
   const action = btn.dataset.docAction;
-  if (action === 'open') {
-    openDocument(id).catch(() => toast('Dokument konnte nicht geöffnet werden.'));
-  } else if (action === 'rename') {
-    const doc = await docStore.get(id);
-    if (!doc) return;
-    renamingDocId = id;
-    pendingFile = null;
-    openDocDialog({ title: 'Dokument umbenennen', fileName: doc.fileName, meta: fmtBytes(doc.size), name: doc.name });
-  } else if (action === 'delete') {
-    const doc = await docStore.get(id);
-    if (!doc || !confirm(`Dokument „${doc.name}“ wirklich löschen?`)) return;
-    await docStore.remove(id);
-    await loadDocCounts();
-    renderAll();
-    renderDocs(currentId);
-    updateStorageInfo();
-    toast('Dokument gelöscht');
+  if (action === 'open') openViewer(id);
+  else if (action === 'rename') startRename(id);
+  else if (action === 'delete') deleteDoc(id);
+});
+
+/* ---------- Dokumente: Betrachter ---------- */
+
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+const viewer = { doc: null, pdf: null, zoom: 1, observer: null, url: null, pages: [], token: 0 };
+const vBody = $('#viewer-body');
+
+function viewerBaseWidth() {
+  return Math.min(vBody.clientWidth - 24, 960);
+}
+
+async function openViewer(id) {
+  const doc = await docStore.get(id);
+  if (!doc) return;
+  resetViewer();
+  const token = ++viewer.token;
+  viewer.doc = doc;
+  viewer.zoom = 1;
+  $('#viewer-title').textContent = doc.name;
+  $('#viewer-page').textContent = '';
+  $('#viewer-share').textContent = canShareFiles() ? 'Teilen' : 'Herunterladen';
+  vBody.innerHTML = '<p class="viewer-msg">Wird geladen …</p>';
+  $('#dlg-viewer').showModal();
+  updateZoomLabel();
+
+  if (isImageDoc(doc)) {
+    viewer.url = URL.createObjectURL(new Blob([doc.data], { type: doc.type }));
+    vBody.innerHTML = `<img class="viewer-img" src="${viewer.url}" alt="${esc(doc.name)}">`;
+    applyZoom();
+    return;
   }
+
+  try {
+    const pdf = await openPdf(doc.data);
+    if (token !== viewer.token) { pdf.destroy(); return; }
+    viewer.pdf = pdf;
+    vBody.innerHTML = '';
+    viewer.observer = new IntersectionObserver(onPageVisibility, { root: vBody, rootMargin: '150% 0px' });
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      if (token !== viewer.token) return;
+      const vp = page.getViewport({ scale: 1 });
+      const el = document.createElement('div');
+      el.className = 'viewer-page';
+      el.dataset.page = i;
+      el.style.aspectRatio = `${vp.width} / ${vp.height}`;
+      vBody.appendChild(el);
+      viewer.pages.push({ el, page, width: vp.width, renderedAt: 0, task: null, visible: false });
+      viewer.observer.observe(el);
+    }
+    applyZoom();
+    updatePageIndicator();
+  } catch (err) {
+    if (token !== viewer.token) return;
+    vBody.innerHTML = `<p class="viewer-msg">${err && err.name === 'PasswordException'
+      ? 'Diese PDF ist passwortgeschützt und kann hier nicht angezeigt werden. Über „' + esc($('#viewer-share').textContent) + '“ kannst du sie in einer anderen App öffnen.'
+      : 'Die PDF konnte nicht angezeigt werden.'}</p>`;
+  }
+}
+
+function onPageVisibility(entries) {
+  for (const entry of entries) {
+    const p = viewer.pages.find(x => x.el === entry.target);
+    if (!p) continue;
+    p.visible = entry.isIntersecting;
+    if (p.visible) renderPage(p);
+    else releasePage(p);
+  }
+}
+
+async function renderPage(p) {
+  const cssWidth = viewerBaseWidth() * viewer.zoom;
+  if (p.renderedAt === cssWidth || !viewer.pdf) return;
+  if (p.task) { p.task.cancel(); p.task = null; }
+  // Auflösung begrenzen, damit Mobilgeräte nicht am Speicher scheitern
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  let scale = (cssWidth * ratio) / p.width;
+  const base = p.page.getViewport({ scale: 1 });
+  const maxArea = 12e6;
+  if (base.width * base.height * scale * scale > maxArea) scale = Math.sqrt(maxArea / (base.width * base.height));
+  const viewport = p.page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.floor(viewport.width);
+  canvas.height = Math.floor(viewport.height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const task = p.page.render({ canvasContext: ctx, viewport });
+  p.task = task;
+  p.renderedAt = cssWidth;
+  try {
+    await task.promise;
+    if (p.task !== task) return;
+    p.task = null;
+    p.el.replaceChildren(canvas);
+  } catch {
+    if (p.task === task) { p.task = null; p.renderedAt = 0; }
+  }
+}
+
+function releasePage(p) {
+  if (p.task) { p.task.cancel(); p.task = null; }
+  const c = p.el.querySelector('canvas');
+  if (c) { c.width = 0; c.height = 0; c.remove(); }
+  p.renderedAt = 0;
+}
+
+function applyZoom() {
+  const w = Math.round(viewerBaseWidth() * viewer.zoom);
+  const img = vBody.querySelector('.viewer-img');
+  if (img) img.style.width = `${w}px`;
+  for (const p of viewer.pages) {
+    p.el.style.width = `${w}px`;
+    if (p.visible) renderPage(p);
+  }
+  updateZoomLabel();
+}
+function setZoom(z, anchor = 0.5) {
+  const old = viewer.zoom;
+  viewer.zoom = Math.min(4, Math.max(0.5, z));
+  if (old === viewer.zoom) return;
+  // Bildausschnitt beim Zoomen ungefähr beibehalten
+  const fy = (vBody.scrollTop + vBody.clientHeight * anchor) / Math.max(1, vBody.scrollHeight);
+  const fx = (vBody.scrollLeft + vBody.clientWidth / 2) / Math.max(1, vBody.scrollWidth);
+  applyZoom();
+  vBody.scrollTop = fy * vBody.scrollHeight - vBody.clientHeight * anchor;
+  vBody.scrollLeft = fx * vBody.scrollWidth - vBody.clientWidth / 2;
+}
+function stepZoom(dir) {
+  const z = viewer.zoom;
+  const next = dir > 0 ? ZOOM_STEPS.find(s => s > z + 0.01) : [...ZOOM_STEPS].reverse().find(s => s < z - 0.01);
+  if (next) setZoom(next);
+}
+function updateZoomLabel() {
+  $('#viewer-zoom').textContent = `${Math.round(viewer.zoom * 100)} %`;
+  $('#viewer-zoom-out').disabled = viewer.zoom <= 0.5;
+  $('#viewer-zoom-in').disabled = viewer.zoom >= 4;
+}
+function updatePageIndicator() {
+  const n = viewer.pages.length;
+  if (n < 2) { $('#viewer-page').textContent = n === 1 ? '1 Seite' : ''; return; }
+  const mid = vBody.scrollTop + vBody.clientHeight / 3;
+  let cur = 1;
+  for (const p of viewer.pages) { if (p.el.offsetTop <= mid) cur = Number(p.el.dataset.page); }
+  $('#viewer-page').textContent = `Seite ${cur} / ${n}`;
+}
+
+function resetViewer() {
+  viewer.token++;
+  if (viewer.observer) viewer.observer.disconnect();
+  for (const p of viewer.pages) releasePage(p);
+  if (viewer.pdf) viewer.pdf.destroy();
+  if (viewer.url) URL.revokeObjectURL(viewer.url);
+  Object.assign(viewer, { doc: null, pdf: null, observer: null, url: null, pages: [] });
+  vBody.innerHTML = '';
+}
+
+function docFileName(d) {
+  const ext = isImageDoc(d) ? (d.type === 'image/png' ? '.png' : d.type === 'image/webp' ? '.webp' : '.jpg') : '.pdf';
+  return (d.name || 'Dokument').replace(/[\\/:*?"<>|]+/g, '_').trim() + ext;
+}
+function canShareFiles() {
+  try {
+    return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] }));
+  } catch { return false; }
+}
+async function shareDoc() {
+  const d = viewer.doc;
+  if (!d) return;
+  const file = new File([d.data], docFileName(d), { type: d.type });
+  if (canShareFiles() && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: d.name }); return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  download(file, file.name);
+}
+
+$('#viewer-zoom-in').addEventListener('click', () => stepZoom(1));
+$('#viewer-zoom-out').addEventListener('click', () => stepZoom(-1));
+$('#viewer-zoom').addEventListener('click', () => setZoom(1));
+$('#viewer-share').addEventListener('click', shareDoc);
+$('#viewer-rename').addEventListener('click', () => viewer.doc && startRename(viewer.doc.id));
+$('#viewer-delete').addEventListener('click', async () => {
+  if (viewer.doc && await deleteDoc(viewer.doc.id)) $('#dlg-viewer').close();
+});
+$('#dlg-viewer').addEventListener('close', resetViewer);
+vBody.addEventListener('scroll', () => requestAnimationFrame(updatePageIndicator), { passive: true });
+// Doppeltipp/-klick wechselt zwischen 100 % und 200 %
+vBody.addEventListener('dblclick', e => {
+  const r = vBody.getBoundingClientRect();
+  setZoom(viewer.zoom >= 1.5 ? 1 : 2, (e.clientY - r.top) / r.height);
+});
+// Strg/⌘ + Mausrad bzw. Trackpad-Pinch zoomt
+vBody.addEventListener('wheel', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  setZoom(viewer.zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+}, { passive: false });
+// Zwei-Finger-Pinch auf dem Touchscreen
+let pinch = null;
+vBody.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) pinch = { d: touchDist(e), z: viewer.zoom };
+}, { passive: true });
+vBody.addEventListener('touchmove', e => {
+  if (!pinch || e.touches.length !== 2) return;
+  e.preventDefault();
+  const z = pinch.z * touchDist(e) / pinch.d;
+  vBody.style.setProperty('--pinch', String(Math.min(4, Math.max(0.5, z)) / viewer.zoom));
+  vBody.classList.add('pinching');
+}, { passive: false });
+vBody.addEventListener('touchend', () => {
+  if (!pinch) return;
+  const factor = parseFloat(vBody.style.getPropertyValue('--pinch')) || 1;
+  vBody.classList.remove('pinching');
+  vBody.style.removeProperty('--pinch');
+  setZoom(viewer.zoom * factor);
+  pinch = null;
+});
+function touchDist(e) {
+  const [a, b] = e.touches;
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if ($('#dlg-viewer').open) applyZoom(); }, 150);
 });
 
 /* ---------- Formular ---------- */

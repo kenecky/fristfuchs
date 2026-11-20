@@ -12,7 +12,11 @@ Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeig
 - **Erinnerungen**: Browser-Benachrichtigung beim Öffnen der App sowie Export als Kalendertermin (.ics, mit Alarm 14 und 3 Tage vorher), einzeln oder alle Fristen zusammen
 - Unterschiedliche Zahlungsintervalle (wöchentlich bis jährlich), umgerechnet auf Monatskosten
 - Status: aktiv, gekündigt (läuft aus) und beendet
-- **Dokumente** pro Vertrag: PDFs anhängen (z. B. Vertrag, Kündigungsbestätigung), beim Hochladen benennen, später umbenennen, öffnen oder löschen
+- **Dokumente** pro Vertrag: PDFs und Fotos anhängen (z. B. Vertrag, abfotografierte Kündigungsbestätigung), beim Hochladen benennen, später umbenennen oder löschen
+  - Vorschaubild der ersten Seite in der Liste
+  - Eingebauter Betrachter mit Blättern und Zoom (Buttons, Doppeltipp, Pinch, Strg + Mausrad)
+  - Teilen bzw. Herunterladen des Originals
+  - Große Fotos werden automatisch auf max. 2400 px verkleinert, PDFs bleiben unverändert
 - Backup und Wiederherstellung als JSON (inklusive Dokumente), Export als CSV (für Excel)
 - Hell- und Dunkelmodus, läuft offline, auf dem Startbildschirm installierbar
 
@@ -67,5 +71,6 @@ PWA-Funktionen (Offline, Installation) brauchen HTTPS oder `localhost`.
 | `sw.js` | Service Worker (Offline-Cache, Klick auf Benachrichtigung) |
 | `manifest.webmanifest` | PWA-Manifest |
 | `icons/` | App-Icons |
+| `vendor/pdfjs/` | [PDF.js](https://github.com/mozilla/pdf.js) 4.10.38 von Mozilla (Apache-2.0) zur PDF-Anzeige |
 
 Bei Änderungen an den Dateien die Konstante `CACHE` in `sw.js` hochzählen, damit installierte Apps das Update laden.

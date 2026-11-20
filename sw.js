@@ -1,5 +1,5 @@
 /* Service Worker: Offline-Cache und Klicks auf Benachrichtigungen */
-const CACHE = 'vertragswaechter-v1.1.0';
+const CACHE = 'vertragswaechter-v1.2.0';
 const ASSETS = [
   './',
   'index.html',
@@ -11,6 +11,8 @@ const ASSETS = [
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png',
+  'vendor/pdfjs/pdf.min.mjs',
+  'vendor/pdfjs/pdf.worker.min.mjs',
 ];
 
 self.addEventListener('install', event => {
