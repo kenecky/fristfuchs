@@ -1,5 +1,5 @@
-/* Service Worker: Offline-Cache und Klicks auf Benachrichtigungen */
-const CACHE = 'fristfuchs-v1.7.0';
+/* Service Worker: Offline-Betrieb, Updates und Klicks auf Benachrichtigungen */
+const CACHE = 'fristfuchs-v1.8.0';
 const ASSETS = [
   './',
   'index.html',
@@ -14,9 +14,18 @@ const ASSETS = [
   'vendor/pdfjs/pdf.min.mjs',
   'vendor/pdfjs/pdf.worker.min.mjs',
 ];
+// Große Bibliotheken ändern sich selten: aus dem Speicher, ohne bei jedem Start zu laden
+const CACHE_FIRST = /\/vendor\//;
+const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' umgeht den HTTP-Zwischenspeicher des Browsers,
+  // damit eine neue Version nicht versehentlich alte Dateien übernimmt.
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(ASSETS.map(url => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -27,24 +36,38 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Stale-while-revalidate: sofort aus dem Cache, im Hintergrund aktualisieren
 self.addEventListener('fetch', event => {
   const req = event.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  const key = req.mode === 'navigate' ? 'index.html' : req;
+
+  if (CACHE_FIRST.test(url.pathname)) {
+    event.respondWith(caches.match(key).then(hit => hit || fetchAndStore(req, key)));
+    return;
+  }
+  // Netzwerk zuerst: online immer der neueste Stand, offline der gespeicherte
   event.respondWith(
-    caches.open(CACHE).then(async cache => {
-      const key = req.mode === 'navigate' ? 'index.html' : req;
-      const cached = await cache.match(key, { ignoreSearch: req.mode === 'navigate' });
-      const network = fetch(req)
-        .then(res => {
-          if (res.ok) cache.put(key, res.clone());
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    withTimeout(fetchAndStore(req, key, true), NETWORK_TIMEOUT_MS)
+      .catch(() => caches.match(key, { ignoreSearch: req.mode === 'navigate' }))
+      .then(res => res || fetch(req))
   );
 });
+
+async function fetchAndStore(req, key, noHttpCache = false) {
+  const res = await fetch(noHttpCache ? new Request(req, { cache: 'no-cache' }) : req);
+  if (res.ok) {
+    const cache = await caches.open(CACHE);
+    cache.put(key, res.clone());
+  }
+  return res;
+}
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();

@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1867,8 +1867,31 @@ if (params.get('id')) openDetail(params.get('id'));
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Neue Version übernommen → einmal neu laden, damit sie sofort sichtbar ist
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    try { sessionStorage.setItem('vw.updated', '1'); } catch {}
+    location.reload();
+  });
+  try {
+    if (sessionStorage.getItem('vw.updated')) {
+      sessionStorage.removeItem('vw.updated');
+      setTimeout(() => toast(`Neue Version ${APP_VERSION} geladen`), 300);
+    }
+  } catch {}
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(() => checkDeadlines()).catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      checkDeadlines();
+      // Beim Zurückkehren in die App und stündlich nach Updates schauen
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+    }).catch(() => {});
   });
 } else {
   checkDeadlines();
