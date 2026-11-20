@@ -1,5 +1,5 @@
 /* Service Worker: Offline-Cache und Klicks auf Benachrichtigungen */
-const CACHE = 'fristfuchs-v1.6.0';
+const CACHE = 'fristfuchs-v1.7.0';
 const ASSETS = [
   './',
   'index.html',
