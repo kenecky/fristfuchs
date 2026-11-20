@@ -21,9 +21,6 @@
       <img src="icons/icon.svg" alt="" width="32" height="32">
       <h1>Fristfuchs</h1>
     </div>
-    <button class="btn btn-primary" id="btn-add" type="button">
-      <span aria-hidden="true">＋</span><span class="hide-sm"> Neuer Vertrag</span>
-    </button>
   </header>
 
   <div id="ptr" class="ptr" aria-hidden="true">
@@ -146,6 +143,11 @@
   <nav class="tabbar" aria-label="Navigation">
     <button type="button" data-tab="dashboard" class="active"><span class="ico" aria-hidden="true">◧</span>Übersicht</button>
     <button type="button" data-tab="contracts"><span class="ico" aria-hidden="true">☰</span>Verträge</button>
+    <div class="fab-slot">
+      <button type="button" class="fab" id="btn-add" aria-label="Neuer Vertrag" title="Neuer Vertrag">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
     <button type="button" data-tab="accounts"><span class="ico" aria-hidden="true">▤</span>Konten</button>
     <button type="button" data-tab="settings"><span class="ico" aria-hidden="true">⚙</span>Mehr</button>
   </nav>

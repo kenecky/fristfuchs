@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -595,11 +595,11 @@ let currentView = 'dashboard';
 function showView(name) {
   currentView = name;
   for (const v of $$('.view')) v.hidden = v.dataset.view !== name;
-  for (const b of $$('.tabbar button')) b.classList.toggle('active', b.dataset.tab === name);
+  for (const b of $$('.tabbar [data-tab]')) b.classList.toggle('active', b.dataset.tab === name);
   try { sessionStorage.setItem('vw.tab', name); } catch {}
   window.scrollTo({ top: 0 });
 }
-$$('.tabbar button').forEach(b => b.addEventListener('click', () => showView(b.dataset.tab)));
+$$('.tabbar [data-tab]').forEach(b => b.addEventListener('click', () => showView(b.dataset.tab)));
 
 /* ---------- Detailansicht ---------- */
 
