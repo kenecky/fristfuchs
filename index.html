@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vertragswächter</title>
+  <meta name="description" content="Alle Abos und Verträge im Blick: Kosten, Konten, Laufzeiten und Kündigungsfristen.">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vertragswächter">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="32" height="32">
+      <h1>Vertragswächter</h1>
+    </div>
+    <button class="btn btn-primary" id="btn-add" type="button">
+      <span aria-hidden="true">＋</span><span class="hide-sm"> Neuer Vertrag</span>
+    </button>
+  </header>
+
+  <main id="main">
+    <!-- Übersicht -->
+    <section class="view" id="view-dashboard" data-view="dashboard">
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-label">Pro Monat</span>
+          <span class="stat-value" id="stat-month">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Pro Jahr</span>
+          <span class="stat-value" id="stat-year">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Aktive Verträge</span>
+          <span class="stat-value" id="stat-count">–</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Fristen in <span id="stat-warn-days">30</span> Tagen</span>
+          <span class="stat-value" id="stat-due">–</span>
+        </div>
+      </div>
+
+      <h2 class="section-title">Nächste Kündigungsfristen</h2>
+      <div id="upcoming" class="list"></div>
+
+      <h2 class="section-title">Kosten nach Kategorie</h2>
+      <div id="by-category" class="bars"></div>
+    </section>
+
+    <!-- Verträge -->
+    <section class="view" id="view-contracts" data-view="contracts" hidden>
+      <div class="toolbar">
+        <input type="search" id="search" placeholder="Suchen (Name, Anbieter, Konto …)" aria-label="Suchen">
+        <select id="filter-status" aria-label="Status filtern">
+          <option value="active">Aktiv</option>
+          <option value="cancelled">Gekündigt</option>
+          <option value="ended">Beendet</option>
+          <option value="all">Alle</option>
+        </select>
+        <select id="filter-category" aria-label="Kategorie filtern">
+          <option value="">Alle Kategorien</option>
+        </select>
+        <select id="sort" aria-label="Sortieren">
+          <option value="deadline">Nach Kündigungsfrist</option>
+          <option value="cost-desc">Teuerste zuerst</option>
+          <option value="cost-asc">Günstigste zuerst</option>
+          <option value="name">Nach Name</option>
+        </select>
+      </div>
+      <div id="contracts" class="list"></div>
+    </section>
+
+    <!-- Konten -->
+    <section class="view" id="view-accounts" data-view="accounts" hidden>
+      <p class="hint">Welche Summe wird monatlich von welchem Konto abgebucht?</p>
+      <div id="accounts" class="list"></div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section class="view" id="view-settings" data-view="settings" hidden>
+      <div class="card settings">
+        <h2>Erinnerungen</h2>
+        <label class="field">
+          <span>Vorwarnzeit vor einer Kündigungsfrist (Tage)</span>
+          <input type="number" id="set-warn-days" min="1" max="365" value="30">
+        </label>
+        <button type="button" class="btn" id="btn-notify">Benachrichtigungen aktivieren</button>
+        <p class="hint" id="notify-state"></p>
+        <p class="hint">Benachrichtigungen erscheinen, wenn du die App öffnest. Für zuverlässige Erinnerungen kannst du jede Frist als Kalendertermin (.ics) exportieren – einzeln in der Vertragsansicht oder alle auf einmal:</p>
+        <button type="button" class="btn" id="btn-ics-all">Alle Fristen als Kalender (.ics)</button>
+      </div>
+
+      <div class="card settings">
+        <h2>Darstellung</h2>
+        <label class="field">
+          <span>Farbschema</span>
+          <select id="set-theme">
+            <option value="system">Wie System</option>
+            <option value="light">Hell</option>
+            <option value="dark">Dunkel</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="card settings">
+        <h2>Daten</h2>
+        <p class="hint">Alle Daten werden ausschließlich lokal auf diesem Gerät gespeichert. Erstelle regelmäßig ein Backup, besonders bevor du Browserdaten löschst oder das Gerät wechselst.</p>
+        <div class="btn-row">
+          <button type="button" class="btn" id="btn-export">Backup exportieren (JSON)</button>
+          <button type="button" class="btn" id="btn-export-csv">Als CSV exportieren</button>
+          <label class="btn" for="import-file">Backup importieren</label>
+          <input type="file" id="import-file" accept="application/json,.json" hidden>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn" id="btn-demo">Beispieldaten laden</button>
+          <button type="button" class="btn btn-danger" id="btn-clear">Alle Daten löschen</button>
+        </div>
+      </div>
+      <p class="hint center">Vertragswächter · Version <span id="app-version"></span></p>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Navigation">
+    <button type="button" data-tab="dashboard" class="active"><span class="ico" aria-hidden="true">◧</span>Übersicht</button>
+    <button type="button" data-tab="contracts"><span class="ico" aria-hidden="true">☰</span>Verträge</button>
+    <button type="button" data-tab="accounts"><span class="ico" aria-hidden="true">▤</span>Konten</button>
+    <button type="button" data-tab="settings"><span class="ico" aria-hidden="true">⚙</span>Mehr</button>
+  </nav>
+
+  <!-- Detail -->
+  <dialog id="dlg-detail" class="sheet">
+    <div class="sheet-head">
+      <h2 id="detail-title"></h2>
+      <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+    </div>
+    <div id="detail-body" class="sheet-body"></div>
+    <div class="sheet-foot">
+      <button type="button" class="btn btn-danger" id="detail-delete">Löschen</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="detail-ics">Frist in Kalender</button>
+      <button type="button" class="btn btn-primary" id="detail-edit">Bearbeiten</button>
+    </div>
+  </dialog>
+
+  <!-- Formular -->
+  <dialog id="dlg-form" class="sheet">
+    <form id="contract-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="form-title">Neuer Vertrag</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+      </div>
+      <div class="sheet-body form-grid">
+        <fieldset>
+          <legend>Allgemein</legend>
+          <label class="field span-2"><span>Name *</span>
+            <input name="name" required placeholder="z. B. Netflix, Handyvertrag, Fitnessstudio"></label>
+          <label class="field"><span>Anbieter</span>
+            <input name="provider" placeholder="z. B. Telekom"></label>
+          <label class="field"><span>Kategorie</span>
+            <input name="category" list="dl-categories" placeholder="z. B. Streaming"></label>
+          <label class="field"><span>Status</span>
+            <select name="status">
+              <option value="active">Aktiv</option>
+              <option value="cancelled">Gekündigt (läuft noch aus)</option>
+              <option value="ended">Beendet</option>
+            </select></label>
+          <label class="field"><span>Vertrags-/Kundennummer</span>
+            <input name="contractNo" autocomplete="off"></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Kosten &amp; Zahlung</legend>
+          <label class="field"><span>Betrag (€) *</span>
+            <input name="amount" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+          <label class="field"><span>Zahlungsintervall</span>
+            <select name="interval">
+              <option value="monthly">monatlich</option>
+              <option value="quarterly">vierteljährlich</option>
+              <option value="halfyearly">halbjährlich</option>
+              <option value="yearly">jährlich</option>
+              <option value="weekly">wöchentlich</option>
+            </select></label>
+          <label class="field"><span>Zahlungskonto</span>
+            <input name="account" list="dl-accounts" placeholder="z. B. Girokonto Sparkasse"></label>
+          <label class="field"><span>Zahlungsart</span>
+            <select name="paymentMethod">
+              <option value="">–</option>
+              <option>Lastschrift</option>
+              <option>Dauerauftrag</option>
+              <option>Überweisung</option>
+              <option>Kreditkarte</option>
+              <option>PayPal</option>
+              <option>Apple / Google Pay</option>
+              <option>Rechnung</option>
+            </select></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Laufzeit &amp; Kündigung</legend>
+          <label class="field"><span>Vertragsbeginn (Abschluss)</span>
+            <input name="startDate" type="date"></label>
+          <label class="field"><span>Mindestlaufzeit (Monate)</span>
+            <input name="minTermMonths" type="number" min="0" step="1" placeholder="0 = keine"></label>
+          <label class="field"><span>Verlängerung danach (Monate)</span>
+            <input name="renewalMonths" type="number" min="0" step="1" placeholder="z. B. 1 oder 12"></label>
+          <div class="field"><span>Kündigungsfrist</span>
+            <div class="inline">
+              <input name="noticeValue" type="number" min="0" step="1" placeholder="z. B. 1" aria-label="Kündigungsfrist Wert">
+              <select name="noticeUnit" aria-label="Kündigungsfrist Einheit">
+                <option value="days">Tage</option>
+                <option value="weeks">Wochen</option>
+                <option value="months" selected>Monate</option>
+              </select>
+            </div></div>
+          <label class="field" data-show-when="cancelled ended"><span>Gekündigt am</span>
+            <input name="cancelledAt" type="date"></label>
+          <label class="field" data-show-when="cancelled ended"><span>Vertragsende</span>
+            <input name="endDate" type="date"></label>
+          <p class="hint span-2" id="form-preview"></p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Kontakt &amp; Notizen</legend>
+          <label class="field"><span>Website / Kundenportal</span>
+            <input name="website" type="url" placeholder="https://"></label>
+          <label class="field"><span>Kündigungs-E-Mail / Adresse</span>
+            <input name="cancelContact" placeholder="kuendigung@anbieter.de"></label>
+          <label class="field span-2"><span>Notizen</span>
+            <textarea name="notes" rows="3"></textarea></label>
+        </fieldset>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="dl-categories"></datalist>
+  <datalist id="dl-accounts"></datalist>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
