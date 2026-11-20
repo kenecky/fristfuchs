@@ -103,6 +103,16 @@
       </div>
 
       <div class="card settings">
+        <h2>Logos</h2>
+        <label class="switch-row">
+          <input type="checkbox" id="set-auto-logos" role="switch">
+          <span>Logos automatisch laden</span>
+        </label>
+        <p class="hint">Für bekannte Anbieter (z. B. Netflix, Telekom) oder über die eingetragene Website lädt die App das passende Logo über DuckDuckGo. Dabei erfährt DuckDuckGo nur die Webadresse des Anbieters – keine Beträge, Konten oder sonstigen Daten. Jedes Logo wird einmal geladen und dann auf dem Gerät gespeichert.</p>
+        <p class="hint">Ein eigenes Logo kannst du jederzeit im Vertrag unter „Bearbeiten“ festlegen.</p>
+      </div>
+
+      <div class="card settings">
         <h2>Darstellung</h2>
         <label class="field">
           <span>Farbschema</span>
@@ -166,6 +176,20 @@
       <div class="sheet-body form-grid">
         <fieldset>
           <legend>Allgemein</legend>
+          <div class="field span-2 logo-field">
+            <span>Logo</span>
+            <div class="logo-row">
+              <span id="form-logo-preview"></span>
+              <div class="logo-choice" role="group" aria-label="Logo-Art">
+                <button type="button" class="chip" data-logo-mode="auto">Automatisch</button>
+                <button type="button" class="chip" data-logo-mode="custom">Eigenes Bild …</button>
+                <button type="button" class="chip" data-logo-mode="none">Nur Buchstabe</button>
+              </div>
+            </div>
+            <p class="hint" id="logo-hint"></p>
+            <input type="hidden" name="logoMode">
+            <input type="hidden" name="logo">
+          </div>
           <label class="field span-2"><span>Name *</span>
             <input name="name" required placeholder="z. B. Netflix, Handyvertrag, Fitnessstudio"></label>
           <label class="field"><span>Anbieter</span>
@@ -273,6 +297,7 @@
       </div>
     </form>
   </dialog>
+  <input type="file" id="logo-file" accept="image/*" hidden>
   <input type="file" id="doc-file" accept="application/pdf,.pdf,image/*" hidden>
 
   <!-- Dokument-Betrachter -->

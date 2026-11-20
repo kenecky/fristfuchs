@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -35,7 +35,7 @@ function safeSet(key, value) {
 }
 
 let contracts = safeGet(STORAGE_KEY, []);
-let settings = Object.assign({ warnDays: 30, theme: 'system' }, safeGet(SETTINGS_KEY, {}));
+let settings = Object.assign({ warnDays: 30, theme: 'system', autoLogos: true }, safeGet(SETTINGS_KEY, {}));
 
 function persist() { safeSet(STORAGE_KEY, contracts); }
 function saveSettings() { safeSet(SETTINGS_KEY, settings); }
@@ -233,9 +233,155 @@ function hue(str) {
   for (const ch of String(str)) h = (h * 31 + ch.codePointAt(0)) % 360;
   return h;
 }
-function avatar(c) {
+/* ---------- Logos ---------- */
+
+const LOGO_CACHE_KEY = 'vw.logos.v1';
+const LOGO_RETRY_MS = 7 * 24 * 3600 * 1000;   // fehlgeschlagene Logos nach 7 Tagen erneut versuchen
+const logoUrl = domain => `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
+
+// Bekannte Anbieter → Webadresse. Reihenfolge zählt: Spezielles vor Allgemeinem.
+const KNOWN_PROVIDERS = [
+  [/netflix/, 'netflix.com'], [/spotify/, 'spotify.com'], [/disney/, 'disneyplus.com'], [/dazn/, 'dazn.com'],
+  [/\bwow\b/, 'wowtv.de'], [/\bsky\b/, 'sky.de'], [/joyn/, 'joyn.de'], [/rtl\s*\+|rtl plus/, 'plus.rtl.de'],
+  [/paramount/, 'paramountplus.com'], [/crunchyroll/, 'crunchyroll.com'], [/waipu/, 'waipu.tv'], [/zattoo/, 'zattoo.com'],
+  [/youtube/, 'youtube.com'], [/twitch/, 'twitch.tv'], [/audible/, 'audible.de'], [/kindle|amazon|prime video|\bprime\b/, 'amazon.de'],
+  [/deezer/, 'deezer.com'], [/tidal/, 'tidal.com'], [/apple|icloud|itunes/, 'apple.com'],
+  [/xbox|game ?pass/, 'xbox.com'], [/microsoft|office|\bm365\b|onedrive|outlook/, 'microsoft.com'],
+  [/playstation|\bps ?plus\b/, 'playstation.com'], [/nintendo/, 'nintendo.de'], [/steam/, 'steampowered.com'],
+  [/google|gemini/, 'google.com'], [/chatgpt|openai/, 'openai.com'], [/claude|anthropic/, 'claude.ai'],
+  [/adobe|photoshop|lightroom/, 'adobe.com'], [/dropbox/, 'dropbox.com'], [/github/, 'github.com'], [/canva/, 'canva.com'],
+  [/1password/, '1password.com'], [/bitwarden/, 'bitwarden.com'], [/nordvpn/, 'nordvpn.com'], [/surfshark/, 'surfshark.com'],
+  [/proton/, 'proton.me'], [/notion/, 'notion.so'], [/duolingo/, 'duolingo.com'], [/linkedin/, 'linkedin.com'],
+  [/patreon/, 'patreon.com'], [/strava/, 'strava.com'], [/peloton/, 'onepeloton.de'], [/gymondo/, 'gymondo.com'],
+  [/telekom|magenta|t-mobile/, 'telekom.de'], [/vodafone/, 'vodafone.de'], [/\bo2\b|telef[oó]nica/, 'o2online.de'],
+  [/1\s*(&|und)\s*1/, '1und1.de'], [/congstar/, 'congstar.de'], [/freenet/, 'freenet.de'], [/aldi ?talk/, 'alditalk.de'],
+  [/fraenk/, 'fraenk.de'], [/winsim/, 'winsim.de'], [/klarmobil/, 'klarmobil.de'], [/blau\.de|\bblau\b/, 'blau.de'],
+  [/huk/, 'huk.de'], [/allianz/, 'allianz.de'], [/\baxa\b/, 'axa.de'], [/\bergo\b/, 'ergo.de'], [/devk/, 'devk.de'],
+  [/generali/, 'generali.de'], [/signal iduna/, 'signal-iduna.de'], [/\bcosmos/, 'cosmosdirekt.de'], [/\btk\b|techniker/, 'tk.de'],
+  [/\baok\b/, 'aok.de'], [/barmer/, 'barmer.de'], [/\bdak\b/, 'dak.de'], [/adac/, 'adac.de'], [/check24/, 'check24.de'],
+  [/fitx/, 'fitx.de'], [/mcfit/, 'mcfit.com'], [/urban sports/, 'urbansportsclub.com'], [/clever fit/, 'clever-fit.com'],
+  [/john reed/, 'johnreed.fitness'], [/\bevo fitness|\bevo\b/, 'evofitness.de'],
+  [/e\.on|\beon\b/, 'eon.de'], [/vattenfall/, 'vattenfall.de'], [/enbw/, 'enbw.com'], [/\brwe\b/, 'rwe.com'],
+  [/tibber/, 'tibber.com'], [/ostrom/, 'ostrom.de'], [/octopus/, 'octopusenergy.de'], [/lichtblick/, 'lichtblick.de'],
+  [/paypal/, 'paypal.com'], [/\bdkb\b/, 'dkb.de'], [/\bing\b/, 'ing.de'], [/\bn26\b/, 'n26.com'], [/comdirect/, 'comdirect.de'],
+  [/sparkasse/, 'sparkasse.de'], [/volksbank|raiffeisen/, 'vr.de'], [/commerzbank/, 'commerzbank.de'], [/deutsche bank/, 'deutsche-bank.de'],
+  [/trade republic/, 'traderepublic.com'], [/scalable/, 'scalable.capital'], [/american express|amex/, 'americanexpress.com'],
+  [/bahncard|deutsche bahn|\bdb\b|deutschlandticket|d-ticket/, 'bahn.de'], [/\bbvg\b/, 'bvg.de'], [/\bmvv\b/, 'mvv-muenchen.de'],
+  [/\bhvv\b/, 'hvv.de'], [/share now/, 'share-now.com'], [/miles/, 'miles-mobility.com'],
+  [/spiegel/, 'spiegel.de'], [/\bzeit\b/, 'zeit.de'], [/\bfaz\b|frankfurter allgemeine/, 'faz.net'], [/s(ü|ue)ddeutsche|\bsz\b/, 'sueddeutsche.de'],
+  [/\bbild\b/, 'bild.de'], [/handelsblatt/, 'handelsblatt.com'], [/readly/, 'gb.readly.com'],
+  [/hellofresh/, 'hellofresh.de'], [/rundfunk|\bgez\b/, 'rundfunkbeitrag.de'], [/lieferando/, 'lieferando.de'], [/wolt/, 'wolt.com'],
+];
+
+function domainFromUrl(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url);
+    return u.hostname.replace(/^www\./, '') || null;
+  } catch { return null; }
+}
+function logoDomain(c) {
+  const fromSite = domainFromUrl(c.website);
+  if (fromSite) return fromSite;
+  const text = `${c.provider || ''} ${c.name || ''}`.toLowerCase();
+  for (const [re, domain] of KNOWN_PROVIDERS) if (re.test(text)) return domain;
+  return null;
+}
+
+let logoCache = safeGet(LOGO_CACHE_KEY, {});
+const logoFetching = new Set();
+function saveLogoCache() { safeSet(LOGO_CACHE_KEY, logoCache); }
+
+/** Lädt ein Logo einmalig und speichert es als Daten-URL auf dem Gerät. */
+async function fetchLogo(domain) {
+  if (logoFetching.has(domain)) return;
+  logoFetching.add(domain);
+  try {
+    const res = await fetch(logoUrl(domain), { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!res.ok) { logoCache[domain] = { src: null, ts: Date.now() }; saveLogoCache(); return; }
+    const blob = await res.blob();
+    if (!blob.size || !/^image\//.test(blob.type || 'image/')) { logoCache[domain] = { src: null, ts: Date.now() }; saveLogoCache(); return; }
+    const src = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+    logoCache[domain] = { src, ts: Date.now() };
+    saveLogoCache();
+  } catch {
+    // Speichern nicht möglich (z. B. offline oder vom Dienst nicht erlaubt): Bild wird direkt geladen
+    logoCache[domain] = { remote: true, ts: Date.now() };
+    saveLogoCache();
+  }
+}
+
+/** Liefert { src, custom } für das anzuzeigende Logo oder null (→ Anfangsbuchstabe). */
+function resolveLogo(c) {
+  const mode = c.logoMode || 'auto';
+  if (mode === 'custom' && c.logo) return { src: c.logo, custom: true };
+  if (mode === 'none' || mode === 'custom' || !settings.autoLogos) return null;
+  const domain = logoDomain(c);
+  if (!domain) return null;
+  const entry = logoCache[domain];
+  if (entry && entry.src) return { src: entry.src, domain };
+  if (entry && entry.src === null && Date.now() - entry.ts < LOGO_RETRY_MS) return null;
+  if (!entry || (!entry.remote && Date.now() - entry.ts >= LOGO_RETRY_MS)) fetchLogo(domain);
+  return { src: logoUrl(domain), domain, remote: true };
+}
+
+function avatar(c, extraClass = '') {
   const initial = (c.name || '?').trim().charAt(0).toUpperCase() || '?';
-  return `<span class="avatar" style="background:hsl(${hue(c.name)} 55% 42%)" aria-hidden="true">${esc(initial)}</span>`;
+  const bg = `hsl(${hue(c.name)} 55% 42%)`;
+  const logo = resolveLogo(c);
+  if (logo) {
+    return `<span class="avatar has-logo${logo.custom ? ' custom' : ''} ${extraClass}" style="background:${bg}" data-initial="${esc(initial)}" aria-hidden="true">` +
+      `<img class="logo-img" src="${esc(logo.src)}" alt="" loading="lazy" referrerpolicy="no-referrer"${logo.domain ? ` data-domain="${esc(logo.domain)}"` : ''}></span>`;
+  }
+  return `<span class="avatar ${extraClass}" style="background:${bg}" aria-hidden="true">${esc(initial)}</span>`;
+}
+
+// Logo lässt sich nicht laden → Anfangsbuchstabe zeigen und merken
+document.addEventListener('error', e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains('logo-img')) return;
+  const box = img.parentElement;
+  box.classList.remove('has-logo', 'custom');
+  box.textContent = box.dataset.initial || '?';
+  const domain = img.dataset.domain;
+  if (domain && navigator.onLine) {
+    logoCache[domain] = { src: null, ts: Date.now() };
+    saveLogoCache();
+  }
+}, true);
+// Winzige Platzhalter-Symbole (1×1) wie fehlende Logos behandeln
+document.addEventListener('load', e => {
+  const img = e.target;
+  if (img instanceof HTMLImageElement && img.classList.contains('logo-img') && img.naturalWidth > 0 && img.naturalWidth < 8) {
+    img.dispatchEvent(new Event('error'));
+  }
+}, true);
+
+function readImageAsSquare(file, size = 192) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const side = Math.min(w, h);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const keepAlpha = /png|webp|svg|gif/.test(file.type);
+      if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size); }
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+      resolve(keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
+    img.src = url;
+  });
 }
 function itemHTML(c) {
   const s = schedule(c);
@@ -966,7 +1112,8 @@ window.addEventListener('resize', () => {
 
 const form = $('#contract-form');
 const FIELDS = ['name', 'provider', 'category', 'status', 'contractNo', 'amount', 'interval', 'account', 'paymentMethod',
-  'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'endDate', 'website', 'cancelContact', 'notes'];
+  'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'endDate', 'website', 'cancelContact', 'notes',
+  'logoMode', 'logo'];
 let editingId = null;
 
 function openForm(id = null) {
@@ -978,6 +1125,8 @@ function openForm(id = null) {
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
+  if (!form.elements.logoMode.value) form.elements.logoMode.value = 'auto';
+  updateLogoPreview();
   $('#form-title').textContent = id ? 'Vertrag bearbeiten' : 'Neuer Vertrag';
   updateFormState();
   $('#dlg-form').showModal();
@@ -990,8 +1139,52 @@ function readForm() {
   data.amount = data.amount === '' ? 0 : Math.round(parseFloat(data.amount.replace(',', '.')) * 100) / 100;
   for (const n of ['minTermMonths', 'renewalMonths', 'noticeValue']) data[n] = data[n] === '' ? '' : Math.max(0, parseInt(data[n], 10) || 0);
   if (data.status === 'active') { data.cancelledAt = ''; data.endDate = ''; }
+  if (data.logoMode !== 'custom') data.logo = '';
   return data;
 }
+
+/* Logo-Auswahl im Formular */
+let logoPreviewTimer;
+function updateLogoPreview() {
+  const data = { name: form.elements.name.value.trim() || '?', provider: form.elements.provider.value, website: form.elements.website.value,
+    logoMode: form.elements.logoMode.value || 'auto', logo: form.elements.logo.value };
+  $('#form-logo-preview').innerHTML = avatar(data);
+  for (const b of $$('[data-logo-mode]', form)) b.setAttribute('aria-pressed', String(b.dataset.logoMode === data.logoMode));
+  const domain = logoDomain(data);
+  let hint;
+  if (data.logoMode === 'custom') hint = 'Eigenes Bild. Tippe erneut auf „Eigenes Bild …“, um es zu ersetzen.';
+  else if (data.logoMode === 'none') hint = 'Es wird nur der Anfangsbuchstabe angezeigt.';
+  else if (!settings.autoLogos) hint = 'Automatische Logos sind unter „Mehr“ ausgeschaltet – es wird der Anfangsbuchstabe angezeigt.';
+  else if (domain) hint = `Logo von ${domain}. Passt es nicht, trage unten die richtige Website ein oder wähle ein eigenes Bild.`;
+  else hint = 'Kein bekannter Anbieter – trage unten die Website ein (z. B. anbieter.de), dann wird das Logo geladen.';
+  $('#logo-hint').textContent = hint;
+}
+form.addEventListener('input', e => {
+  if (['name', 'provider', 'website'].includes(e.target.name)) {
+    clearTimeout(logoPreviewTimer);
+    logoPreviewTimer = setTimeout(updateLogoPreview, 400);
+  }
+});
+form.addEventListener('click', e => {
+  const btn = e.target.closest('[data-logo-mode]');
+  if (!btn) return;
+  const mode = btn.dataset.logoMode;
+  if (mode === 'custom') { $('#logo-file').click(); return; }
+  form.elements.logoMode.value = mode;
+  updateLogoPreview();
+});
+$('#logo-file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    form.elements.logo.value = await readImageAsSquare(file);
+    form.elements.logoMode.value = 'custom';
+    updateLogoPreview();
+  } catch {
+    toast('Dieses Bild kann nicht gelesen werden. Bitte JPG oder PNG verwenden.');
+  }
+});
 
 function updateFormState() {
   const status = form.elements.status.value;
@@ -1443,6 +1636,13 @@ $('#set-warn-days').addEventListener('change', e => {
   renderAll();
 });
 $('#set-theme').addEventListener('change', e => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
+$('#set-auto-logos').addEventListener('change', e => {
+  settings.autoLogos = e.target.checked;
+  saveSettings();
+  if (!settings.autoLogos) { logoCache = {}; saveLogoCache(); }
+  renderAll();
+  toast(settings.autoLogos ? 'Logos werden automatisch geladen' : 'Automatische Logos ausgeschaltet');
+});
 $('#btn-notify').addEventListener('click', async () => {
   const p = await Notification.requestPermission();
   updateNotifyState();
@@ -1490,6 +1690,7 @@ $('#btn-clear').addEventListener('click', async () => {
 applyTheme();
 $('#set-warn-days').value = settings.warnDays;
 $('#set-theme').value = settings.theme;
+$('#set-auto-logos').checked = settings.autoLogos;
 $('#app-version').textContent = APP_VERSION;
 updateNotifyState();
 renderAll();

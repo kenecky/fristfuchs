@@ -18,6 +18,7 @@ Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeig
   - Teilen bzw. Herunterladen des Originals
   - Große Fotos werden automatisch auf max. 2400 px verkleinert, PDFs bleiben unverändert
 - Backup und Wiederherstellung als JSON (inklusive Dokumente), Export als CSV (für Excel)
+- **Logos**: automatisch für rund 100 bekannte Anbieter oder über die eingetragene Website (geladen über DuckDuckGo, danach lokal gespeichert, unter „Mehr“ abschaltbar); alternativ eigenes Bild oder nur Anfangsbuchstabe
 - Gesten: auf der Übersicht im oberen Bildschirmdrittel nach unten ziehen zum Aktualisieren; geöffnete Verträge nach unten wegwischen zum Schließen
 - Eigene Sicherheitsabfragen beim Löschen und Importieren (keine Browser-Popups)
 - Hell- und Dunkelmodus, läuft offline, auf dem Startbildschirm installierbar
@@ -28,6 +29,8 @@ Alle Daten bleiben **ausschließlich lokal im Browser** des jeweiligen Geräts: 
 
 - Daten werden nicht automatisch zwischen Handy und PC synchronisiert. Zum Übertragen ein Backup exportieren und auf dem anderen Gerät importieren.
 - Wer die Browserdaten löscht, löscht auch die Verträge. Regelmäßig ein Backup machen!
+
+**Ausnahme Logos:** Ist „Logos automatisch laden“ eingeschaltet (Standard), fragt die App bei DuckDuckGo das Symbol zur Webadresse des Anbieters ab (z. B. `netflix.com`). Dabei werden keine weiteren Daten übertragen, und jedes Logo wird nur einmal geladen. Wer das nicht möchte, schaltet es unter „Mehr“ aus.
 
 ## So wird die Kündigungsfrist berechnet
 
