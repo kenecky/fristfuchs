@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1410,7 +1410,7 @@ function icsEvent(c, s) {
   ].join('\r\n');
 }
 function downloadICS(items, filename) {
-  const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Vertragswaechter//DE', 'CALSCALE:GREGORIAN',
+  const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Fristfuchs//DE', 'CALSCALE:GREGORIAN',
     ...items.map(({ c, s }) => icsEvent(c, s)), 'END:VCALENDAR'].join('\r\n');
   download(new Blob([body], { type: 'text/calendar;charset=utf-8' }), filename);
 }
@@ -1432,8 +1432,8 @@ async function exportJSON() {
   try {
     documents = (await docStore.all()).map(({ data, ...meta }) => ({ ...meta, data: bufToB64(data) }));
   } catch {}
-  const payload = { app: 'vertragswaechter', version: 2, exportedAt: new Date().toISOString(), contracts, documents };
-  download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `vertragswaechter-backup-${toISO(today())}.json`);
+  const payload = { app: 'fristfuchs', version: 2, exportedAt: new Date().toISOString(), contracts, documents };
+  download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `fristfuchs-backup-${toISO(today())}.json`);
 }
 
 function exportCSV() {
@@ -1447,7 +1447,7 @@ function exportCSV() {
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.map(c => cell(c[0])).join(';'),
     ...contracts.map(c => cols.map(([, f]) => cell(typeof f === 'function' ? f(c) : c[f])).join(';'))];
-  download(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), `vertragswaechter-${toISO(today())}.csv`);
+  download(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), `fristfuchs-${toISO(today())}.csv`);
 }
 
 async function importJSON(file) {

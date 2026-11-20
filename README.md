@@ -1,4 +1,4 @@
-# Abo- & Vertragswächter
+# Fristfuchs – Abos & Verträge im Blick
 
 Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeigt: monatliche Kosten, Zahlungskonto, Abschluss, Laufzeit, Kündigungsfrist und **bis wann spätestens gekündigt werden muss**.
 
