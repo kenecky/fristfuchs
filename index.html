@@ -26,6 +26,10 @@
     </button>
   </header>
 
+  <div id="ptr" class="ptr" aria-hidden="true">
+    <svg viewBox="0 0 48 48"><circle class="ptr-ring" cx="24" cy="24" r="14" pathLength="100"/><circle class="ptr-dot" cx="24" cy="10" r="4"/></svg>
+  </div>
+
   <main id="main">
     <!-- Übersicht -->
     <section class="view" id="view-dashboard" data-view="dashboard">
@@ -138,6 +142,7 @@
 
   <!-- Detail -->
   <dialog id="dlg-detail" class="sheet">
+    <div class="grabber" aria-hidden="true"></div>
     <div class="sheet-head">
       <h2 id="detail-title"></h2>
       <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
@@ -290,6 +295,14 @@
       </div>
       <button type="button" class="btn btn-primary" id="viewer-share">Teilen</button>
     </div>
+  </dialog>
+
+  <!-- Sicherheitsabfrage -->
+  <dialog id="dlg-confirm" class="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-msg">
+    <div class="confirm-icon" id="confirm-icon" aria-hidden="true"></div>
+    <h2 id="confirm-title"></h2>
+    <p class="confirm-msg" id="confirm-msg"></p>
+    <div class="confirm-actions" id="confirm-actions"></div>
   </dialog>
 
   <datalist id="dl-categories"></datalist>

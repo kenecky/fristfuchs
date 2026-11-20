@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -380,7 +380,9 @@ function renderAll() {
 
 /* ---------- Navigation ---------- */
 
+let currentView = 'dashboard';
 function showView(name) {
+  currentView = name;
   for (const v of $$('.view')) v.hidden = v.dataset.view !== name;
   for (const b of $$('.tabbar button')) b.classList.toggle('active', b.dataset.tab === name);
   try { sessionStorage.setItem('vw.tab', name); } catch {}
@@ -712,7 +714,7 @@ async function startRename(id) {
 }
 async function deleteDoc(id) {
   const doc = await docStore.get(id);
-  if (!doc || !confirm(`Dokument „${doc.name}“ wirklich löschen?`)) return false;
+  if (!doc || !(await confirmDelete('Dokument löschen?', `„${doc.name}“ wird dauerhaft gelöscht.`))) return false;
   await docStore.remove(id);
   await loadDocCounts();
   renderAll();
@@ -1104,8 +1106,21 @@ async function importJSON(file) {
     const clean = list.filter(c => c && typeof c === 'object' && c.name).map(c => ({
       ...c, id: c.id || uid(), status: STATUS[c.status] ? c.status : 'active',
     }));
-    const replace = contracts.length === 0 || confirm(
-      `${clean.length} Verträge gefunden.\n\nOK = Vorhandene Daten ersetzen\nAbbrechen = Zusammenführen (gleiche IDs werden aktualisiert)`);
+    let mode = 'replace';
+    if (contracts.length) {
+      mode = await ask({
+        title: 'Backup importieren',
+        message: `Im Backup sind ${clean.length} Verträge. Sollen sie zu deinen vorhandenen Daten hinzugefügt werden oder diese ersetzen?`,
+        icon: ICONS.upload, tone: 'neutral',
+        buttons: [
+          { label: 'Hinzufügen', value: 'merge', kind: 'primary' },
+          { label: 'Vorhandene Daten ersetzen', value: 'replace', kind: 'danger' },
+          { label: 'Abbrechen', value: null },
+        ],
+      });
+      if (!mode) return;
+    }
+    const replace = mode === 'replace';
     if (replace) {
       contracts = clean;
       await docStore.clear().catch(() => {});
@@ -1205,6 +1220,161 @@ function applyTheme() {
   else document.documentElement.dataset.theme = settings.theme;
 }
 
+/* ---------- Sicherheitsabfrage ---------- */
+
+const ICONS = {
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+};
+
+/**
+ * Zeigt eine eigene Abfrage statt des Browserfensters.
+ * buttons: [{ label, value, kind: 'danger' | 'primary' | undefined }] – in Anzeigereihenfolge.
+ * Liefert den value des gewählten Buttons, bei Abbruch (Esc, Hintergrund) null.
+ */
+function ask({ title, message = '', icon = ICONS.trash, tone = 'danger', buttons }) {
+  const dlg = $('#dlg-confirm');
+  const actions = $('#confirm-actions');
+  $('#confirm-title').textContent = title;
+  $('#confirm-msg').textContent = message;
+  $('#confirm-msg').hidden = !message;
+  const ic = $('#confirm-icon');
+  ic.innerHTML = icon;
+  ic.className = `confirm-icon ${tone}`;
+  actions.innerHTML = buttons.map((b, i) => `<button type="button" class="btn ${
+    b.kind === 'danger' ? 'btn-danger-solid' : b.kind === 'primary' ? 'btn-primary' : ''}" data-i="${i}">${esc(b.label)}</button>`).join('');
+  return new Promise(resolve => {
+    let result = null;
+    const onClick = e => {
+      const btn = e.target.closest('[data-i]');
+      if (!btn) return;
+      result = buttons[Number(btn.dataset.i)].value;
+      dlg.close();
+    };
+    actions.addEventListener('click', onClick);
+    dlg.addEventListener('close', () => { actions.removeEventListener('click', onClick); resolve(result); }, { once: true });
+    dlg.showModal();
+    // Sicherer Standard: Fokus auf „Abbrechen“
+    const safe = buttons.findIndex(b => b.value === false || b.value === null);
+    actions.querySelector(`[data-i="${safe >= 0 ? safe : 0}"]`).focus();
+  });
+}
+const confirmDelete = (title, message, label = 'Löschen') =>
+  ask({ title, message, buttons: [{ label, value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }] }).then(v => v === true);
+
+/* ---------- Ziehen zum Aktualisieren (nur Übersicht, nur oberes Drittel) ---------- */
+
+const PTR_THRESHOLD = 70;
+const ptrEl = $('#ptr');
+const ptrRing = ptrEl.querySelector('.ptr-ring');
+let ptr = null;
+const anyDialogOpen = () => $$('dialog').some(d => d.open);
+
+function setPtr(d) {
+  const p = Math.min(1, d / PTR_THRESHOLD);
+  ptrEl.style.transform = `translateY(${d}px)`;
+  ptrEl.style.opacity = String(Math.min(1, d / 30));
+  ptrRing.style.strokeDasharray = `${p * 80} 100`;
+  ptrEl.classList.toggle('ready', p >= 1);
+}
+function resetPtr() {
+  ptrEl.classList.remove('pulling', 'ready');
+  ptrEl.style.transform = '';
+  ptrEl.style.opacity = '';
+}
+async function refreshApp() {
+  ptrEl.classList.remove('pulling');
+  ptrEl.classList.add('loading');
+  setPtr(PTR_THRESHOLD);
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) await Promise.race([reg.update(), new Promise(r => setTimeout(r, 1500))]);
+  } catch {}
+  location.reload();
+}
+
+document.addEventListener('touchstart', e => {
+  ptr = null;
+  if (currentView !== 'dashboard' || e.touches.length !== 1 || window.scrollY > 0 || anyDialogOpen()) return;
+  const t = e.touches[0];
+  if (t.clientY > window.innerHeight / 3) return;
+  ptr = { x0: t.clientX, y0: t.clientY, dist: 0, active: false };
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!ptr) return;
+  const t = e.touches[0];
+  const dy = t.clientY - ptr.y0;
+  const dx = t.clientX - ptr.x0;
+  if (!ptr.active) {
+    if (dy < -4 || Math.abs(dx) > Math.abs(dy) + 4) { ptr = null; return; }
+    if (dy < 8) return;
+    ptr.active = true;
+    ptrEl.classList.add('pulling');
+  }
+  if (e.cancelable) e.preventDefault();
+  ptr.dist = Math.min(130, Math.max(0, dy) * 0.55);
+  setPtr(ptr.dist);
+}, { passive: false });
+document.addEventListener('touchend', () => {
+  if (!ptr) return;
+  const ready = ptr.active && ptr.dist >= PTR_THRESHOLD;
+  const active = ptr.active;
+  ptr = null;
+  if (ready) refreshApp();
+  else if (active) resetPtr();
+});
+document.addEventListener('touchcancel', () => { if (ptr) { ptr = null; resetPtr(); } });
+
+/* ---------- Vertragsansicht nach unten wegwischen ---------- */
+
+function enableSwipeToClose(dlg) {
+  let s = null;
+  dlg.addEventListener('touchstart', e => {
+    s = null;
+    if (e.touches.length !== 1 || e.target.closest('.sheet-foot')) return;
+    const body = dlg.querySelector('.sheet-body');
+    // Nur wenn der Inhalt ganz oben ist – sonst wird normal gescrollt
+    if (body && body.contains(e.target) && body.scrollTop > 0) return;
+    const t = e.touches[0];
+    s = { x0: t.clientX, y0: t.clientY, t0: performance.now(), dy: 0, active: false };
+  }, { passive: true });
+  dlg.addEventListener('touchmove', e => {
+    if (!s) return;
+    const t = e.touches[0];
+    const dy = t.clientY - s.y0;
+    const dx = t.clientX - s.x0;
+    if (!s.active) {
+      if (dy < -4 || Math.abs(dx) > Math.abs(dy) + 4) { s = null; return; }
+      if (dy < 8) return;
+      s.active = true;
+      s.t0 = performance.now();
+      s.y0 = t.clientY;
+      dlg.classList.add('dragging');
+    }
+    if (e.cancelable) e.preventDefault();
+    s.dy = Math.max(0, t.clientY - s.y0);
+    dlg.style.transform = `translateY(${s.dy}px)`;
+  }, { passive: false });
+  const end = () => {
+    if (!s) return;
+    const { dy, t0, active } = s;
+    s = null;
+    dlg.classList.remove('dragging');
+    if (!active) return;
+    const velocity = dy / Math.max(1, performance.now() - t0);
+    if (dy > 120 || (dy > 40 && velocity > 0.5)) {
+      dlg.style.transform = `translateY(${window.innerHeight}px)`;
+      setTimeout(() => { dlg.close(); dlg.style.transform = ''; }, 200);
+    } else {
+      dlg.style.transform = '';
+    }
+  };
+  dlg.addEventListener('touchend', end);
+  dlg.addEventListener('touchcancel', end);
+}
+enableSwipeToClose($('#dlg-detail'));
+
 /* ---------- Toast ---------- */
 
 let toastTimer;
@@ -1245,7 +1415,10 @@ $('#detail-edit').addEventListener('click', () => openForm(currentId));
 $('#detail-delete').addEventListener('click', async () => {
   const c = contracts.find(x => x.id === currentId);
   const n = docCounts.get(currentId) || 0;
-  if (!c || !confirm(`„${c.name}“ wirklich löschen?${n ? `\n\nAuch ${n === 1 ? 'das angehängte Dokument wird' : `die ${n} angehängten Dokumente werden`} gelöscht.` : ''}`)) return;
+  if (!c) return;
+  const ok = await confirmDelete('Vertrag löschen?',
+    `„${c.name}“ wird dauerhaft gelöscht.${n ? ` ${n === 1 ? 'Das angehängte Dokument wird' : `Die ${n} angehängten Dokumente werden`} ebenfalls gelöscht.` : ''}`);
+  if (!ok) return;
   contracts = contracts.filter(x => x.id !== currentId);
   persist();
   await docStore.removeByContract(c.id).catch(() => {});
@@ -1287,8 +1460,12 @@ $('#import-file').addEventListener('change', e => {
   if (f) importJSON(f);
   e.target.value = '';
 });
-$('#btn-demo').addEventListener('click', () => {
-  if (contracts.length && !confirm('Beispieldaten zu deinen vorhandenen Verträgen hinzufügen?')) return;
+$('#btn-demo').addEventListener('click', async () => {
+  if (contracts.length && !(await ask({
+    title: 'Beispieldaten hinzufügen?', message: 'Die Beispielverträge werden zu deinen vorhandenen Verträgen hinzugefügt.',
+    icon: ICONS.plus, tone: 'neutral',
+    buttons: [{ label: 'Hinzufügen', value: true, kind: 'primary' }, { label: 'Abbrechen', value: false }],
+  }))) return;
   contracts.push(...demoData());
   persist();
   renderAll();
@@ -1296,7 +1473,9 @@ $('#btn-demo').addEventListener('click', () => {
 });
 $('#btn-clear').addEventListener('click', async () => {
   if (!contracts.length) { toast('Keine Daten vorhanden.'); return; }
-  if (!confirm('Wirklich ALLE Verträge löschen? Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.')) return;
+  const ok = await confirmDelete('Alle Daten löschen?',
+    `Alle ${contracts.length} Verträge und ihre Dokumente werden gelöscht. Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.`, 'Alles löschen');
+  if (!ok) return;
   contracts = [];
   persist();
   await docStore.clear().catch(() => {});

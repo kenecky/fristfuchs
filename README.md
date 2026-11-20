@@ -18,6 +18,8 @@ Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeig
   - Teilen bzw. Herunterladen des Originals
   - Große Fotos werden automatisch auf max. 2400 px verkleinert, PDFs bleiben unverändert
 - Backup und Wiederherstellung als JSON (inklusive Dokumente), Export als CSV (für Excel)
+- Gesten: auf der Übersicht im oberen Bildschirmdrittel nach unten ziehen zum Aktualisieren; geöffnete Verträge nach unten wegwischen zum Schließen
+- Eigene Sicherheitsabfragen beim Löschen und Importieren (keine Browser-Popups)
 - Hell- und Dunkelmodus, läuft offline, auf dem Startbildschirm installierbar
 
 ## Datenschutz

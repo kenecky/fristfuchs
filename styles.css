@@ -71,6 +71,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* Eingebautes Ziehen-zum-Aktualisieren des Browsers abschalten – die App macht das selbst */
+html, body { overscroll-behavior-y: none; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -263,7 +265,7 @@ dialog::backdrop { background: rgba(2, 6, 23, .55); }
 @media (max-width: 560px) {
   dialog.sheet {
     width: 100vw; max-width: 100vw; max-height: 100dvh; height: 100dvh;
-    margin: 0; border-radius: 0; border: 0;
+    margin: 0; border-radius: 0; border: 0; padding-top: env(safe-area-inset-top);
   }
   .form-grid fieldset { grid-template-columns: 1fr; }
   .sheet-foot .spacer { display: none; }
@@ -336,3 +338,48 @@ dialog.viewer::backdrop { background: #0b1222; }
 .viewer-msg { color: #cbd5e1; text-align: center; margin: auto; max-width: 420px; padding: 24px; }
 .zoom { display: flex; align-items: center; gap: 2px; }
 .zoom-label { background: none; border: 0; color: #e8eef6; font-weight: 600; min-width: 64px; cursor: pointer; font-variant-numeric: tabular-nums; }
+
+/* Ziehen zum Aktualisieren */
+.ptr {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 8px); z-index: 9;
+  width: 44px; height: 44px; margin-left: -22px; border-radius: 50%;
+  background: var(--navy); box-shadow: 0 4px 14px rgba(15, 23, 42, .3);
+  display: grid; place-items: center; pointer-events: none;
+  opacity: 0; transform: translateY(0); transition: transform .2s ease, opacity .2s ease;
+}
+.ptr.pulling { transition: none; }
+.ptr svg { width: 30px; height: 30px; }
+.ptr-ring { fill: none; stroke: var(--mint); stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 0 100; transform: rotate(-90deg); transform-origin: 24px 24px; }
+.ptr-dot { fill: var(--amber); transform-origin: 24px 24px; transition: transform .15s; }
+.ptr.ready .ptr-dot { transform: scale(1.25); }
+.ptr.loading svg { animation: ptr-spin .8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+/* Vertragsansicht per Wischen schließen */
+.sheet-body, .viewer-body { overscroll-behavior: contain; }
+#dlg-detail { transition: transform .22s ease; }
+#dlg-detail.dragging { transition: none; }
+.grabber { display: none; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto -4px; flex-shrink: 0; }
+@media (pointer: coarse) { .grabber { display: block; } }
+
+/* Sicherheitsabfrage */
+dialog.confirm {
+  width: min(380px, calc(100vw - 32px)); padding: 24px 20px 16px; margin: auto;
+  border: 0; border-radius: 20px; background: var(--surface); color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .35); text-align: center;
+}
+dialog.confirm[open] { animation: confirm-pop .16s ease-out; }
+dialog.confirm::backdrop { background: rgba(2, 6, 23, .55); }
+@keyframes confirm-pop { from { transform: scale(.94); opacity: 0; } }
+.confirm-icon {
+  width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px;
+  display: grid; place-items: center; background: var(--danger-bg); color: var(--danger);
+}
+.confirm-icon.neutral { background: var(--ok-bg); color: var(--ok); }
+.confirm-icon svg { width: 26px; height: 26px; }
+dialog.confirm h2 { font-size: 1.15rem; margin-bottom: 8px; }
+.confirm-msg { color: var(--muted); margin: 0 0 20px; white-space: pre-line; }
+.confirm-actions { display: flex; flex-direction: column; gap: 8px; }
+.confirm-actions .btn { width: 100%; min-height: 48px; }
+.btn-danger-solid, .btn-danger-solid:hover { background: #c2410c; color: #fff; border-color: transparent; }
+.btn-danger-solid:hover { filter: brightness(1.08); }
