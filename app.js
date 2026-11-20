@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -39,6 +39,79 @@ let settings = Object.assign({ warnDays: 30, theme: 'system' }, safeGet(SETTINGS
 
 function persist() { safeSet(STORAGE_KEY, contracts); }
 function saveSettings() { safeSet(SETTINGS_KEY, settings); }
+
+/* ---------- Dokumente (IndexedDB) ---------- */
+
+const MAX_DOC_BYTES = 25 * 1024 * 1024;
+const docStore = (() => {
+  let dbPromise;
+  function open() {
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open('vertragswaechter', 1);
+        req.onupgradeneeded = () => {
+          const store = req.result.createObjectStore('documents', { keyPath: 'id' });
+          store.createIndex('contractId', 'contractId');
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return dbPromise;
+  }
+  async function run(mode, fn) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('documents', mode);
+      const store = tx.objectStore('documents');
+      let result;
+      const r = fn(store);
+      if (r) r.onsuccess = () => { result = r.result; };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  }
+  return {
+    put: doc => run('readwrite', s => s.put(doc)),
+    get: id => run('readonly', s => s.get(id)),
+    remove: id => run('readwrite', s => s.delete(id)),
+    all: () => run('readonly', s => s.getAll()),
+    byContract: cid => run('readonly', s => s.index('contractId').getAll(cid)),
+    clear: () => run('readwrite', s => s.clear()),
+    async removeByContract(cid) {
+      const docs = await this.byContract(cid);
+      await run('readwrite', s => { for (const d of docs) s.delete(d.id); });
+    },
+  };
+})();
+
+// Anzahl der Dokumente je Vertrag, damit die Listen synchron rendern können
+let docCounts = new Map();
+async function loadDocCounts() {
+  try {
+    const docs = await docStore.all();
+    docCounts = new Map();
+    for (const d of docs) docCounts.set(d.contractId, (docCounts.get(d.contractId) || 0) + 1);
+  } catch { docCounts = new Map(); }
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB`;
+}
+function bufToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64ToBuf(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
 
 /* ---------- Datums-Helfer (lokal, ohne Zeitzonen-Probleme) ---------- */
 
@@ -167,7 +240,9 @@ function avatar(c) {
 function itemHTML(c) {
   const s = schedule(c);
   const iv = INTERVALS[c.interval] || INTERVALS.monthly;
-  const sub = [c.category, c.account].filter(Boolean).map(esc).join(' · ') || esc(c.provider || '');
+  const n = docCounts.get(c.id) || 0;
+  const clip = n ? `<span class="clip" title="${n} ${n === 1 ? 'Dokument' : 'Dokumente'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7.1"/></svg>${n}</span>` : '';
+  const sub = [[c.category, c.account].filter(Boolean).map(esc).join(' · ') || esc(c.provider || ''), clip].filter(Boolean).join(' · ');
   const perMonth = c.interval !== 'monthly' ? `<small> ≈ ${eur.format(monthlyCost(c))}/Monat</small>` : '';
   return `
     <button type="button" class="item" data-id="${esc(c.id)}">
@@ -377,10 +452,133 @@ function openDetail(id) {
     </div>
     ${alert}
     <dl class="dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}`;
+    ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
+    <h3 class="sub-title">Dokumente <span class="count" id="doc-count"></span></h3>
+    <div class="docs" id="doc-list"></div>
+    <button type="button" class="btn doc-add" id="doc-add">＋ Dokument hinzufügen</button>`;
   $('#detail-ics').hidden = s.kind !== 'deadline';
-  $('#dlg-detail').showModal();
+  if (!$('#dlg-detail').open) $('#dlg-detail').showModal();
+  renderDocs(id);
 }
+
+async function renderDocs(contractId) {
+  const list = $('#doc-list');
+  if (!list) return;
+  let docs = [];
+  try { docs = await docStore.byContract(contractId); }
+  catch { list.innerHTML = '<p class="hint">Dokumente können in diesem Browser nicht gespeichert werden.</p>'; return; }
+  if (currentId !== contractId) return;
+  docs.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  $('#doc-count').textContent = docs.length ? `(${docs.length})` : '';
+  list.innerHTML = docs.length
+    ? docs.map(d => `
+      <div class="doc" data-doc="${esc(d.id)}">
+        <button type="button" class="doc-icon" data-doc-action="open" aria-label="${esc(d.name)} öffnen">PDF</button>
+        <button type="button" class="doc-main" data-doc-action="open">
+          <span class="doc-name">${esc(d.name)}</span>
+          <span class="doc-meta">${fmtBytes(d.size)} · ${fmtDate(new Date(d.createdAt))}</span>
+        </button>
+        <button type="button" class="icon-btn" data-doc-action="rename" aria-label="Umbenennen" title="Umbenennen">✎</button>
+        <button type="button" class="icon-btn" data-doc-action="delete" aria-label="Löschen" title="Löschen">🗑</button>
+      </div>`).join('')
+    : '<p class="hint">Noch keine Dokumente. Hänge z. B. den Vertrag oder die Kündigungsbestätigung als PDF an.</p>';
+}
+
+/* Hochladen und Benennen */
+let pendingFile = null;
+let renamingDocId = null;
+
+function openDocDialog({ title, fileName, meta, name }) {
+  $('#doc-form-title').textContent = title;
+  $('#doc-file-name').textContent = fileName;
+  $('#doc-file-meta').textContent = meta;
+  const input = $('#doc-form').elements.docName;
+  input.value = name;
+  $('#dlg-doc').showModal();
+  input.focus();
+  input.select();
+}
+
+$('#doc-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  if (!isPdf) { toast('Bitte eine PDF-Datei auswählen.'); return; }
+  if (file.size > MAX_DOC_BYTES) { toast(`Die Datei ist zu groß (max. ${fmtBytes(MAX_DOC_BYTES)}).`); return; }
+  pendingFile = file;
+  renamingDocId = null;
+  openDocDialog({ title: 'Dokument hinzufügen', fileName: file.name, meta: fmtBytes(file.size), name: file.name.replace(/\.pdf$/i, '') });
+});
+
+$('#doc-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('#doc-form').elements.docName.value.trim();
+  if (!name) { toast('Bitte einen Namen eingeben.'); return; }
+  try {
+    if (renamingDocId) {
+      const doc = await docStore.get(renamingDocId);
+      if (doc) await docStore.put({ ...doc, name });
+      toast('Dokument umbenannt');
+    } else if (pendingFile) {
+      const data = await pendingFile.arrayBuffer();
+      await docStore.put({
+        id: uid(), contractId: currentId, name, fileName: pendingFile.name,
+        type: 'application/pdf', size: pendingFile.size, createdAt: new Date().toISOString(), data,
+      });
+      toast('Dokument gespeichert');
+    }
+  } catch {
+    toast('Speichern fehlgeschlagen – ist der Gerätespeicher voll?');
+  }
+  pendingFile = null;
+  renamingDocId = null;
+  $('#dlg-doc').close();
+  await loadDocCounts();
+  renderAll();
+  renderDocs(currentId);
+  updateStorageInfo();
+});
+
+async function openDocument(id) {
+  const doc = await docStore.get(id);
+  if (!doc) return;
+  const url = URL.createObjectURL(new Blob([doc.data], { type: doc.type || 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+$('#dlg-detail').addEventListener('click', async e => {
+  if (e.target.closest('#doc-add')) { $('#doc-file').click(); return; }
+  const btn = e.target.closest('[data-doc-action]');
+  if (!btn) return;
+  const id = btn.closest('[data-doc]').dataset.doc;
+  const action = btn.dataset.docAction;
+  if (action === 'open') {
+    openDocument(id).catch(() => toast('Dokument konnte nicht geöffnet werden.'));
+  } else if (action === 'rename') {
+    const doc = await docStore.get(id);
+    if (!doc) return;
+    renamingDocId = id;
+    pendingFile = null;
+    openDocDialog({ title: 'Dokument umbenennen', fileName: doc.fileName, meta: fmtBytes(doc.size), name: doc.name });
+  } else if (action === 'delete') {
+    const doc = await docStore.get(id);
+    if (!doc || !confirm(`Dokument „${doc.name}“ wirklich löschen?`)) return;
+    await docStore.remove(id);
+    await loadDocCounts();
+    renderAll();
+    renderDocs(currentId);
+    updateStorageInfo();
+    toast('Dokument gelöscht');
+  }
+});
 
 /* ---------- Formular ---------- */
 
@@ -495,8 +693,12 @@ function download(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function exportJSON() {
-  const payload = { app: 'vertragswaechter', version: 1, exportedAt: new Date().toISOString(), contracts };
+async function exportJSON() {
+  let documents = [];
+  try {
+    documents = (await docStore.all()).map(({ data, ...meta }) => ({ ...meta, data: bufToB64(data) }));
+  } catch {}
+  const payload = { app: 'vertragswaechter', version: 2, exportedAt: new Date().toISOString(), contracts, documents };
   download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `vertragswaechter-backup-${toISO(today())}.json`);
 }
 
@@ -507,7 +709,7 @@ function exportCSV() {
     ['Abschluss', 'startDate'], ['Mindestlaufzeit (Monate)', 'minTermMonths'], ['Verlängerung (Monate)', 'renewalMonths'],
     ['Kündigungsfrist', noticeText], ['Kündigen bis', c => { const s = schedule(c); return s.kind === 'deadline' ? toISO(s.deadline) : ''; }],
     ['Gekündigt am', 'cancelledAt'], ['Vertragsende', 'endDate'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
-    ['Kündigung an', 'cancelContact'], ['Notizen', 'notes']];
+    ['Kündigung an', 'cancelContact'], ['Notizen', 'notes'], ['Dokumente', c => docCounts.get(c.id) || 0]];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.map(c => cell(c[0])).join(';'),
     ...contracts.map(c => cols.map(([, f]) => cell(typeof f === 'function' ? f(c) : c[f])).join(';'))];
@@ -526,14 +728,23 @@ async function importJSON(file) {
       `${clean.length} Verträge gefunden.\n\nOK = Vorhandene Daten ersetzen\nAbbrechen = Zusammenführen (gleiche IDs werden aktualisiert)`);
     if (replace) {
       contracts = clean;
+      await docStore.clear().catch(() => {});
     } else {
       const map = new Map(contracts.map(c => [c.id, c]));
       for (const c of clean) map.set(c.id, c);
       contracts = [...map.values()];
     }
     persist();
+    const ids = new Set(contracts.map(c => c.id));
+    const docs = Array.isArray(data.documents) ? data.documents.filter(d => d && d.id && d.data && ids.has(d.contractId)) : [];
+    let docErrors = 0;
+    for (const d of docs) {
+      try { await docStore.put({ ...d, data: b64ToBuf(d.data) }); } catch { docErrors++; }
+    }
+    await loadDocCounts();
     renderAll();
-    toast(`${clean.length} Verträge importiert`);
+    updateStorageInfo();
+    toast(`${clean.length} Verträge${docs.length ? ` und ${docs.length - docErrors} Dokumente` : ''} importiert`);
   } catch {
     toast('Import fehlgeschlagen – ist das eine gültige Backup-Datei?');
   }
@@ -589,6 +800,24 @@ async function checkDeadlines() {
   safeSet(NOTIFIED_KEY, notified);
 }
 
+/* ---------- Speicheranzeige ---------- */
+
+async function updateStorageInfo() {
+  const el = $('#storage-info');
+  try {
+    const docs = await docStore.all();
+    const size = docs.reduce((s, d) => s + (d.size || 0), 0);
+    let text = `${docs.length} ${docs.length === 1 ? 'Dokument' : 'Dokumente'} gespeichert (${fmtBytes(size)}).`;
+    if (navigator.storage && navigator.storage.estimate) {
+      const { usage, quota } = await navigator.storage.estimate();
+      if (quota) text += ` Belegt: ${fmtBytes(usage || 0)} von ca. ${fmtBytes(quota)}.`;
+    }
+    el.textContent = text;
+  } catch {
+    el.textContent = '';
+  }
+}
+
 /* ---------- Theme ---------- */
 
 function applyTheme() {
@@ -599,12 +828,22 @@ function applyTheme() {
 /* ---------- Toast ---------- */
 
 let toastTimer;
+const toastEl = $('#toast');
+const hasPopover = typeof toastEl.showPopover === 'function';
+if (!hasPopover) toastEl.hidden = true;
 function toast(msg) {
-  const el = $('#toast');
-  el.textContent = msg;
-  el.hidden = false;
+  toastEl.textContent = msg;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 2800);
+  if (hasPopover) {
+    // Neu öffnen, damit der Hinweis über einem gerade geöffneten Dialog liegt
+    try { toastEl.hidePopover(); } catch {}
+    toastEl.showPopover();
+  } else {
+    toastEl.hidden = false;
+  }
+  toastTimer = setTimeout(() => {
+    if (hasPopover) { try { toastEl.hidePopover(); } catch {} } else toastEl.hidden = true;
+  }, 2800);
 }
 
 /* ---------- Events ---------- */
@@ -623,11 +862,15 @@ for (const dlg of $$('dialog')) {
 }
 
 $('#detail-edit').addEventListener('click', () => openForm(currentId));
-$('#detail-delete').addEventListener('click', () => {
+$('#detail-delete').addEventListener('click', async () => {
   const c = contracts.find(x => x.id === currentId);
-  if (!c || !confirm(`„${c.name}“ wirklich löschen?`)) return;
+  const n = docCounts.get(currentId) || 0;
+  if (!c || !confirm(`„${c.name}“ wirklich löschen?${n ? `\n\nAuch ${n === 1 ? 'das angehängte Dokument wird' : `die ${n} angehängten Dokumente werden`} gelöscht.` : ''}`)) return;
   contracts = contracts.filter(x => x.id !== currentId);
   persist();
+  await docStore.removeByContract(c.id).catch(() => {});
+  await loadDocCounts();
+  updateStorageInfo();
   renderAll();
   $('#dlg-detail').close();
   toast('Vertrag gelöscht');
@@ -671,12 +914,15 @@ $('#btn-demo').addEventListener('click', () => {
   renderAll();
   toast('Beispieldaten geladen');
 });
-$('#btn-clear').addEventListener('click', () => {
+$('#btn-clear').addEventListener('click', async () => {
   if (!contracts.length) { toast('Keine Daten vorhanden.'); return; }
   if (!confirm('Wirklich ALLE Verträge löschen? Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.')) return;
   contracts = [];
   persist();
+  await docStore.clear().catch(() => {});
+  await loadDocCounts();
   renderAll();
+  updateStorageInfo();
   toast('Alle Daten gelöscht');
 });
 
@@ -688,6 +934,8 @@ $('#set-theme').value = settings.theme;
 $('#app-version').textContent = APP_VERSION;
 updateNotifyState();
 renderAll();
+loadDocCounts().then(renderAll);
+updateStorageInfo();
 
 const params = new URLSearchParams(location.search);
 let startTab = 'dashboard';

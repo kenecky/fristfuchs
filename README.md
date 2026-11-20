@@ -12,12 +12,13 @@ Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeig
 - **Erinnerungen**: Browser-Benachrichtigung beim Öffnen der App sowie Export als Kalendertermin (.ics, mit Alarm 14 und 3 Tage vorher), einzeln oder alle Fristen zusammen
 - Unterschiedliche Zahlungsintervalle (wöchentlich bis jährlich), umgerechnet auf Monatskosten
 - Status: aktiv, gekündigt (läuft aus) und beendet
-- Backup und Wiederherstellung als JSON, Export als CSV (für Excel)
+- **Dokumente** pro Vertrag: PDFs anhängen (z. B. Vertrag, Kündigungsbestätigung), beim Hochladen benennen, später umbenennen, öffnen oder löschen
+- Backup und Wiederherstellung als JSON (inklusive Dokumente), Export als CSV (für Excel)
 - Hell- und Dunkelmodus, läuft offline, auf dem Startbildschirm installierbar
 
 ## Datenschutz
 
-Alle Daten bleiben **ausschließlich lokal im Browser** des jeweiligen Geräts (localStorage). Es gibt keinen Server und kein Konto. Deshalb gilt:
+Alle Daten bleiben **ausschließlich lokal im Browser** des jeweiligen Geräts: Verträge im localStorage, Dokumente in IndexedDB. Es gibt keinen Server und kein Konto. Deshalb gilt:
 
 - Daten werden nicht automatisch zwischen Handy und PC synchronisiert. Zum Übertragen ein Backup exportieren und auf dem anderen Gerät importieren.
 - Wer die Browserdaten löscht, löscht auch die Verträge. Regelmäßig ein Backup machen!
@@ -62,7 +63,7 @@ PWA-Funktionen (Offline, Installation) brauchen HTTPS oder `localhost`.
 |---|---|
 | `index.html` | Oberfläche |
 | `styles.css` | Gestaltung (responsiv, hell/dunkel) |
-| `app.js` | Logik: Speichern, Fristberechnung, Export, Benachrichtigungen |
+| `app.js` | Logik: Speichern, Fristberechnung, Dokumente, Export, Benachrichtigungen |
 | `sw.js` | Service Worker (Offline-Cache, Klick auf Benachrichtigung) |
 | `manifest.webmanifest` | PWA-Manifest |
 | `icons/` | App-Icons |

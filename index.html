@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Vertragswächter</title>
   <meta name="description" content="Alle Abos und Verträge im Blick: Kosten, Konten, Laufzeiten und Kündigungsfristen.">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -112,7 +112,8 @@
 
       <div class="card settings">
         <h2>Daten</h2>
-        <p class="hint">Alle Daten werden ausschließlich lokal auf diesem Gerät gespeichert. Erstelle regelmäßig ein Backup, besonders bevor du Browserdaten löschst oder das Gerät wechselst.</p>
+        <p class="hint">Alle Daten werden ausschließlich lokal auf diesem Gerät gespeichert. Erstelle regelmäßig ein Backup, besonders bevor du Browserdaten löschst oder das Gerät wechselst. Das Backup enthält auch alle Dokumente.</p>
+        <p class="hint" id="storage-info"></p>
         <div class="btn-row">
           <button type="button" class="btn" id="btn-export">Backup exportieren (JSON)</button>
           <button type="button" class="btn" id="btn-export-csv">Als CSV exportieren</button>
@@ -245,10 +246,34 @@
     </form>
   </dialog>
 
+  <!-- Dokument benennen -->
+  <dialog id="dlg-doc" class="sheet small">
+    <form id="doc-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="doc-form-title">Dokument hinzufügen</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div class="file-info">
+          <span class="doc-icon" aria-hidden="true">PDF</span>
+          <span class="doc-main"><span class="doc-name" id="doc-file-name"></span><span class="doc-meta" id="doc-file-meta"></span></span>
+        </div>
+        <label class="field"><span>Name des Dokuments</span>
+          <input name="docName" required maxlength="120" placeholder="z. B. Vertrag, Kündigungsbestätigung, Rechnung 2026" autocomplete="off"></label>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+  <input type="file" id="doc-file" accept="application/pdf,.pdf" hidden>
+
   <datalist id="dl-categories"></datalist>
   <datalist id="dl-accounts"></datalist>
 
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" popover="manual"></div>
 
   <script src="app.js"></script>
 </body>
