@@ -57,8 +57,8 @@ python3 -m http.server 8080
 ```
 
 **Kostenlos veröffentlichen mit GitHub Pages:**
-Repository → *Settings* → *Pages* → Source: „Deploy from a branch“ → Branch wählen, Ordner `/ (root)` → speichern.
-Die App ist dann unter `https://<benutzer>.github.io/abo-und-vertrags-waechter/` erreichbar.
+Repository → *Settings* → *Pages* → Source: „Deploy from a branch“ → Branch `main`, Ordner `/ (root)` → speichern.
+Die App ist dann unter `https://<benutzer>.github.io/fristfuchs/` erreichbar.
 
 PWA-Funktionen (Offline, Installation) brauchen HTTPS oder `localhost`.
 
