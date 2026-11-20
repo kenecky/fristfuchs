@@ -186,7 +186,10 @@
                 <button type="button" class="chip" data-logo-mode="none">Nur Buchstabe</button>
               </div>
             </div>
-            <p class="hint" id="logo-hint"></p>
+            <div class="logo-progress" id="logo-progress" role="progressbar" aria-label="Logo wird geladen" aria-valuemin="0" aria-valuemax="100" hidden>
+              <div class="logo-progress-fill"></div>
+            </div>
+            <p class="hint" id="logo-hint" aria-live="polite"></p>
             <input type="hidden" name="logoMode">
             <input type="hidden" name="logo">
           </div>

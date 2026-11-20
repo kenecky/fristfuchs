@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -289,13 +289,17 @@ function logoDomain(c) {
 }
 
 let logoCache = safeGet(LOGO_CACHE_KEY, {});
-const logoFetching = new Set();
+const logoFetching = new Map();
 function saveLogoCache() { safeSet(LOGO_CACHE_KEY, logoCache); }
 
 /** Lädt ein Logo einmalig und speichert es als Daten-URL auf dem Gerät. */
-async function fetchLogo(domain) {
-  if (logoFetching.has(domain)) return;
-  logoFetching.add(domain);
+function fetchLogo(domain) {
+  if (!logoFetching.has(domain)) {
+    logoFetching.set(domain, fetchLogoNow(domain).finally(() => logoFetching.delete(domain)));
+  }
+  return logoFetching.get(domain);
+}
+async function fetchLogoNow(domain) {
   try {
     const res = await fetch(logoUrl(domain), { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
     if (!res.ok) { logoCache[domain] = { src: null, ts: Date.now() }; saveLogoCache(); return; }
@@ -362,26 +366,87 @@ document.addEventListener('load', e => {
   }
 }, true);
 
-function readImageAsSquare(file, size = 192) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const w = img.naturalWidth, h = img.naturalHeight;
-      const side = Math.min(w, h);
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const keepAlpha = /png|webp|svg|gif/.test(file.type);
-      if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size); }
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
-      resolve(keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.88));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
-    img.src = url;
-  });
+/**
+ * Bereitet ein eigenes Logo auf: leeren Rand entfernen, vollständig (ohne Abschneiden)
+ * in ein Quadrat einpassen und als kleine, scharfe Datei speichern.
+ */
+async function prepareLogo(blob, size = 160) {
+  const img = await loadImage(blob);
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) throw new Error('image');
+
+  // 1. Verkleinerte Kopie zur Analyse
+  const a = Math.min(1, 600 / Math.max(w, h));
+  const aw = Math.max(1, Math.round(w * a)), ah = Math.max(1, Math.round(h * a));
+  const ac = document.createElement('canvas');
+  ac.width = aw; ac.height = ah;
+  const actx = ac.getContext('2d', { willReadFrequently: true });
+  actx.drawImage(img, 0, 0, aw, ah);
+  const px = actx.getImageData(0, 0, aw, ah).data;
+  const at = (x, y) => { const i = (y * aw + x) * 4; return [px[i], px[i + 1], px[i + 2], px[i + 3]]; };
+
+  // 2. Hintergrund an Ecken und Kanten bestimmen
+  const samples = [];
+  for (let k = 0; k <= 8; k++) {
+    const fx = Math.round((aw - 1) * k / 8), fy = Math.round((ah - 1) * k / 8);
+    samples.push(at(fx, 0), at(fx, ah - 1), at(0, fy), at(aw - 1, fy));
+  }
+  const transparentBg = samples.every(c => c[3] < 24);
+  const avg = [0, 1, 2].map(i => samples.reduce((sum, c) => sum + c[i], 0) / samples.length);
+  const dist = (c, b) => Math.abs(c[0] - b[0]) + Math.abs(c[1] - b[1]) + Math.abs(c[2] - b[2]);
+  const solidBg = !transparentBg && samples.every(c => c[3] > 230 && dist(c, avg) < 45);
+  const kind = transparentBg ? 'transparent' : solidBg ? 'solid' : 'photo';
+
+  // 3. Inhalt finden (alles, was sich vom Hintergrund abhebt)
+  let x0 = 0, y0 = 0, x1 = aw - 1, y1 = ah - 1;
+  if (kind !== 'photo') {
+    let minX = aw, minY = ah, maxX = -1, maxY = -1;
+    for (let y = 0; y < ah; y++) {
+      for (let x = 0; x < aw; x++) {
+        const c = at(x, y);
+        const isContent = kind === 'transparent' ? c[3] > 24 : (c[3] > 24 && dist(c, avg) > 60);
+        if (isContent) {
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX >= 0) { x0 = minX; y0 = minY; x1 = maxX; y1 = maxY; }
+  }
+  // zurück auf Originalkoordinaten
+  const sx = x0 / a, sy = y0 / a;
+  const sw = Math.min(w - sx, (x1 - x0 + 1) / a), sh = Math.min(h - sy, (y1 - y0 + 1) / a);
+
+  // 4. Vollständig ins Quadrat einpassen (mit Abstand), Hintergrund passend auffüllen
+  const pad = kind === 'photo' ? 0 : Math.round(size * 0.1);
+  const box = size - 2 * pad;
+  const scale = Math.min(box / sw, box / sh);
+  const dw = sw * scale, dh = sh * scale;
+  const out = document.createElement('canvas');
+  out.width = out.height = size;
+  const ctx = out.getContext('2d');
+  if (kind === 'solid') ctx.fillStyle = `rgb(${avg.map(Math.round).join(',')})`;
+  else if (kind === 'photo') ctx.fillStyle = '#fff';
+  if (kind !== 'transparent') ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, (size - dw) / 2, (size - dh) / 2, dw, dh);
+  return kind === 'photo' ? out.toDataURL('image/jpeg', 0.88) : out.toDataURL('image/png');
+}
+function dataUrlToBlob(url) {
+  const [head, b64] = url.split(',');
+  const type = (head.match(/data:([^;]+)/) || [])[1] || 'image/png';
+  return new Blob([b64ToBuf(b64)], { type });
+}
+// Einmalig: früher zugeschnittene eigene Logos neu einpassen (entfernt u. a. weißen Rand)
+async function migrateCustomLogos() {
+  let changed = false;
+  for (const c of contracts) {
+    if (c.logoMode !== 'custom' || !c.logo || c.logoV === 2) continue;
+    try { c.logo = await prepareLogo(dataUrlToBlob(c.logo)); } catch {}
+    c.logoV = 2;
+    changed = true;
+  }
+  if (changed) { persist(); renderAll(); }
 }
 function itemHTML(c) {
   const s = schedule(c);
@@ -1126,6 +1191,9 @@ function openForm(id = null) {
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
   if (!form.elements.logoMode.value) form.elements.logoMode.value = 'auto';
+  logoRun++;
+  setLogoProgress(null);
+  lastLogoDomain = logoDomain(c);
   updateLogoPreview();
   $('#form-title').textContent = id ? 'Vertrag bearbeiten' : 'Neuer Vertrag';
   updateFormState();
@@ -1140,6 +1208,7 @@ function readForm() {
   for (const n of ['minTermMonths', 'renewalMonths', 'noticeValue']) data[n] = data[n] === '' ? '' : Math.max(0, parseInt(data[n], 10) || 0);
   if (data.status === 'active') { data.cancelledAt = ''; data.endDate = ''; }
   if (data.logoMode !== 'custom') data.logo = '';
+  else data.logoV = 2;
   return data;
 }
 
@@ -1148,21 +1217,106 @@ let logoPreviewTimer;
 function updateLogoPreview() {
   const data = { name: form.elements.name.value.trim() || '?', provider: form.elements.provider.value, website: form.elements.website.value,
     logoMode: form.elements.logoMode.value || 'auto', logo: form.elements.logo.value };
-  $('#form-logo-preview').innerHTML = avatar(data);
   for (const b of $$('[data-logo-mode]', form)) b.setAttribute('aria-pressed', String(b.dataset.logoMode === data.logoMode));
+  if (logoLoading) {
+    // Während der Suche: pulsierender Anfangsbuchstabe, Suchtext bleibt stehen
+    $('#form-logo-preview').innerHTML = avatar({ ...data, logoMode: 'none' }, 'pulse');
+    return;
+  }
+  $('#form-logo-preview').innerHTML = avatar(data);
   const domain = logoDomain(data);
   let hint;
   if (data.logoMode === 'custom') hint = 'Eigenes Bild. Tippe erneut auf „Eigenes Bild …“, um es zu ersetzen.';
   else if (data.logoMode === 'none') hint = 'Es wird nur der Anfangsbuchstabe angezeigt.';
   else if (!settings.autoLogos) hint = 'Automatische Logos sind unter „Mehr“ ausgeschaltet – es wird der Anfangsbuchstabe angezeigt.';
+  else if (domain && logoCache[domain] && logoCache[domain].src === null) hint = `Für ${domain} wurde kein Logo gefunden. Trage unten die richtige Website ein oder wähle ein eigenes Bild.`;
   else if (domain) hint = `Logo von ${domain}. Passt es nicht, trage unten die richtige Website ein oder wähle ein eigenes Bild.`;
   else hint = 'Kein bekannter Anbieter – trage unten die Website ein (z. B. anbieter.de), dann wird das Logo geladen.';
   $('#logo-hint').textContent = hint;
 }
+
+/* Fortschrittsbalken beim automatischen Laden */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let logoRun = 0;
+let logoLoading = false;
+let lastLogoDomain = null;
+
+// Prüft, ob sich das Logo wirklich anzeigen lässt
+function probeImage(src, timeout = 8000) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const t = setTimeout(() => resolve(false), timeout);
+    img.onload = () => { clearTimeout(t); resolve(img.naturalWidth >= 8); };
+    img.onerror = () => { clearTimeout(t); resolve(false); };
+    img.referrerPolicy = 'no-referrer';
+    img.src = src;
+  });
+}
+async function ensureLogo(domain, force) {
+  let entry = logoCache[domain];
+  if (force && entry && !entry.src) { delete logoCache[domain]; entry = null; }
+  if (!entry || (!entry.src && !entry.remote && Date.now() - entry.ts >= LOGO_RETRY_MS)) {
+    await fetchLogo(domain);
+    entry = logoCache[domain];
+  }
+  const src = entry && (entry.src || (entry.remote ? logoUrl(domain) : null));
+  if (!src) return false;
+  const ok = await probeImage(src);
+  if (!ok && navigator.onLine) { logoCache[domain] = { src: null, ts: Date.now() }; saveLogoCache(); }
+  return ok;
+}
+
+function setLogoProgress(pct, label) {
+  const wrap = $('#logo-progress');
+  wrap.hidden = pct === null;
+  logoLoading = pct !== null && pct < 100;
+  if (pct === null) return;
+  wrap.querySelector('.logo-progress-fill').style.width = `${pct}%`;
+  wrap.setAttribute('aria-valuenow', String(Math.round(pct)));
+  if (label) $('#logo-hint').textContent = label;
+}
+
+async function runAutoLogo(force = false) {
+  const run = ++logoRun;
+  const data = { name: form.elements.name.value.trim(), provider: form.elements.provider.value, website: form.elements.website.value };
+  const domain = logoDomain(data);
+  lastLogoDomain = domain;
+  if (form.elements.logoMode.value !== 'auto' || !settings.autoLogos || !domain) {
+    setLogoProgress(null);
+    updateLogoPreview();
+    return;
+  }
+  const fill = $('#logo-progress .logo-progress-fill');
+  fill.style.transition = 'none';
+  setLogoProgress(0, `Suche Logo für ${domain} …`);
+  updateLogoPreview();
+  void fill.offsetWidth;
+  fill.style.transition = '';
+  setLogoProgress(35);
+  // Langsam weiterlaufen lassen, solange geladen wird
+  const creep = setTimeout(() => { if (run === logoRun) setLogoProgress(85); }, 400);
+  const [ok] = await Promise.all([
+    Promise.race([ensureLogo(domain, force), sleep(10000).then(() => false)]),
+    sleep(700),   // kurz sichtbar lassen, damit man sieht, dass etwas passiert
+  ]);
+  clearTimeout(creep);
+  if (run !== logoRun) return;
+  setLogoProgress(100, ok ? `Logo von ${domain} geladen.` : `Für ${domain} wurde kein Logo gefunden.`);
+  $('#form-logo-preview').innerHTML = avatar({ ...data, name: data.name || '?', logoMode: 'auto' });
+  await sleep(450);
+  if (run !== logoRun) return;
+  setLogoProgress(null);
+  updateLogoPreview();
+}
+
 form.addEventListener('input', e => {
   if (['name', 'provider', 'website'].includes(e.target.name)) {
     clearTimeout(logoPreviewTimer);
-    logoPreviewTimer = setTimeout(updateLogoPreview, 400);
+    logoPreviewTimer = setTimeout(() => {
+      const d = logoDomain({ name: form.elements.name.value, provider: form.elements.provider.value, website: form.elements.website.value });
+      if (form.elements.logoMode.value === 'auto' && d && d !== lastLogoDomain) runAutoLogo();
+      else { lastLogoDomain = d; updateLogoPreview(); }
+    }, 500);
   }
 });
 form.addEventListener('click', e => {
@@ -1170,15 +1324,20 @@ form.addEventListener('click', e => {
   if (!btn) return;
   const mode = btn.dataset.logoMode;
   if (mode === 'custom') { $('#logo-file').click(); return; }
+  logoRun++;
+  setLogoProgress(null);
   form.elements.logoMode.value = mode;
   updateLogoPreview();
+  if (mode === 'auto') runAutoLogo(true);
 });
 $('#logo-file').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   try {
-    form.elements.logo.value = await readImageAsSquare(file);
+    logoRun++;
+    setLogoProgress(null);
+    form.elements.logo.value = await prepareLogo(file);
     form.elements.logoMode.value = 'custom';
     updateLogoPreview();
   } catch {
@@ -1695,6 +1854,7 @@ $('#app-version').textContent = APP_VERSION;
 updateNotifyState();
 renderAll();
 loadDocCounts().then(renderAll);
+migrateCustomLogos();
 updateStorageInfo();
 
 const params = new URLSearchParams(location.search);
