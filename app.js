@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -488,6 +488,14 @@ function renderDashboard() {
   $('#stat-due').textContent = due.length;
   $('#stat-warn-days').textContent = settings.warnDays;
 
+  // Glocke in der Kopfzeile: Zahl anstehender Fristen, dringende (≤ 7 Tage) kräftiger
+  const badge = $('#bell-badge');
+  badge.hidden = due.length === 0;
+  badge.textContent = due.length > 9 ? '9+' : String(due.length);
+  badge.classList.toggle('urgent', due.some(x => x.s.daysLeft <= 7));
+  $('#btn-bell').setAttribute('aria-label', due.length
+    ? `${due.length} anstehende Kündigungsfristen` : 'Keine anstehenden Kündigungsfristen');
+
   const upcoming = withDeadline.slice(0, 6);
   $('#upcoming').innerHTML = contracts.length === 0
     ? emptyHTML('Noch keine Verträge erfasst. Leg los – oder lade unter „Mehr“ Beispieldaten.')
@@ -519,8 +527,9 @@ function renderContracts() {
   const cat = $('#filter-category').value;
   const sort = $('#sort').value;
 
+  // Beim Suchen werden alle Verträge durchsucht, unabhängig vom Status-Filter
   let list = contracts.filter(c =>
-    (status === 'all' || c.status === status) &&
+    (q || status === 'all' || c.status === status) &&
     (!cat || c.category === cat) &&
     (!q || [c.name, c.provider, c.category, c.account, c.contractNo, c.notes].some(v => String(v || '').toLowerCase().includes(q)))
   );
@@ -539,9 +548,16 @@ function renderContracts() {
   };
   list.sort(sorters[sort] || sorters.deadline);
 
+  const hint = $('#search-hint');
+  hint.hidden = !q;
+  // Filter gelten beim Suchen nicht – deshalb ausblenden
+  $('#view-contracts .toolbar').hidden = !!q;
+  if (q) hint.textContent = `${list.length} ${list.length === 1 ? 'Treffer' : 'Treffer'} für „${$('#search').value.trim()}“ in allen Verträgen`;
+
   $('#contracts').innerHTML = list.length
     ? list.map(itemHTML).join('')
-    : contracts.length ? emptyHTML('Keine Treffer für diese Filter.', false) : emptyHTML('Noch keine Verträge erfasst.');
+    : q ? emptyHTML('Kein Vertrag passt zu deiner Suche.', false)
+      : contracts.length ? emptyHTML('Keine Treffer für diese Filter.', false) : emptyHTML('Noch keine Verträge erfasst.');
 }
 
 function renderAccounts() {
@@ -598,12 +614,46 @@ let currentView = 'dashboard';
 let navTarget = null;      // Ziel eines angetippten Tabs, solange dorthin geglitten wird
 let navTimer;
 
+const PAGE_TITLES = { dashboard: 'Übersicht', contracts: 'Verträge', accounts: 'Konten', settings: 'Mehr' };
+
 function setActiveTab(name) {
   if (name === currentView && $('.tabbar [data-tab].active')?.dataset.tab === name) return;
   currentView = name;
   for (const b of $$('.tabbar [data-tab]')) b.classList.toggle('active', b.dataset.tab === name);
+  $('#page-title').textContent = PAGE_TITLES[name];
+  // Suche gilt der Vertragsliste – beim Verlassen schließen
+  if (name !== 'contracts' && searchOpen) closeSearch();
   try { sessionStorage.setItem('vw.tab', name); } catch {}
 }
+
+/* Suche in der Kopfzeile */
+let searchOpen = false;
+function openSearch() {
+  searchOpen = true;
+  $('#topbar').classList.add('searching');
+  $('#search').focus();   // direkt im Tipp aufrufen, sonst öffnet iOS die Tastatur nicht
+  if (currentView !== 'contracts') showView('contracts');
+}
+function closeSearch() {
+  searchOpen = false;
+  $('#topbar').classList.remove('searching');
+  const had = $('#search').value;
+  $('#search').value = '';
+  $('#search').blur();
+  if (had) renderContracts();
+}
+$('#btn-search').addEventListener('click', openSearch);
+$('#search-close').addEventListener('click', closeSearch);
+$('#search').addEventListener('keydown', e => { if (e.key === 'Escape') closeSearch(); });
+
+/* Glocke: zu den anstehenden Fristen auf der Übersicht */
+$('#btn-bell').addEventListener('click', () => {
+  if (currentView !== 'dashboard') showView('dashboard');
+  const view = $('#view-dashboard');
+  const target = $('#upcoming').previousElementSibling || $('#upcoming');
+  const top = target.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop - 12;
+  view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+});
 function viewIndexFromScroll() {
   const i = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
   return Math.max(0, Math.min(VIEWS.length - 1, i));

@@ -16,10 +16,29 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
+  <header class="topbar" id="topbar">
     <div class="brand">
-      <img src="icons/icon.svg" alt="" width="32" height="32">
-      <h1>Fristfuchs</h1>
+      <img src="icons/icon.svg" alt="" width="30" height="30">
+      <div class="brand-text">
+        <span class="brand-name">Fristfuchs</span>
+        <h1 id="page-title">Übersicht</h1>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="top-btn" id="btn-search" aria-label="Verträge durchsuchen" title="Suchen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button type="button" class="top-btn" id="btn-bell" aria-label="Anstehende Kündigungsfristen" title="Anstehende Fristen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="top-badge" id="bell-badge" hidden></span>
+      </button>
+    </div>
+    <div class="top-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="search" placeholder="Verträge durchsuchen …" aria-label="Verträge durchsuchen" enterkeyhint="search" autocomplete="off">
+      <button type="button" class="top-btn" id="search-close" aria-label="Suche schließen" title="Suche schließen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
   </header>
 
@@ -58,8 +77,8 @@
 
     <!-- Verträge -->
     <section class="view" id="view-contracts" data-view="contracts">
+      <p class="hint search-hint" id="search-hint" hidden></p>
       <div class="toolbar">
-        <input type="search" id="search" placeholder="Suchen (Name, Anbieter, Konto …)" aria-label="Suchen">
         <select id="filter-status" aria-label="Status filtern">
           <option value="active">Aktiv</option>
           <option value="cancelled">Gekündigt</option>
