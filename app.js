@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.34.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -726,7 +726,7 @@ function renderDeadlines(withDeadline, due) {
     .sort((a, b) => String(a.cancelledAt).localeCompare(String(b.cancelledAt)));
   const later = withDeadline.filter(x => x.s.daysLeft > settings.warnDays);
   const group = (title, list, hint = '') => list.length ? `
-    <h3 class="section-title">${title}<span class="count">${list.length}</span></h3>
+    <h3 class="section-title">${title} <span class="count">(${list.length})</span></h3>
     ${hint ? `<p class="hint">${hint}</p>` : ''}
     <div class="list">${list.map(itemHTML).join('')}</div>` : '';
   const html = group('Bestätigung ausstehend', pending, 'Kündigung verschickt, aber noch nicht bestätigt.')
@@ -844,15 +844,14 @@ function renderAccounts() {
     const open = openSet.has(key);
     return `
     <div class="card account-card${open ? ' open' : ''}">
-      <button type="button" class="account-head${editId ? '' : ' muted'}" data-account-toggle="${esc(key)}" aria-expanded="${open}">
+      <div class="account-head${editId ? '' : ' muted'}" data-account-toggle="${esc(key)}" role="button" tabindex="0" aria-expanded="${open}">
         ${head}
         <svg class="account-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
+      </div>
       <div class="account-body"><div class="account-inner">
         ${list.length
           ? `<div class="list">${list.sort((a, b) => monthlyCost(b) - monthlyCost(a)).map(itemHTML).join('')}</div>`
           : '<p class="hint account-empty">Keine laufenden Verträge über dieses Konto.</p>'}
-        ${editId ? `<button type="button" class="btn account-edit" data-account="${esc(editId)}">✎ Konto bearbeiten</button>` : ''}
       </div></div>
     </div>`;
   };
@@ -863,7 +862,7 @@ function renderAccounts() {
   const html = rows.map(({ a, list, sum }) => card(a.id, `
         ${accountAvatar(a)}
         <span class="item-main">
-          <span class="item-title">${esc(a.name)}</span>
+          <span class="account-title-row"><span class="item-title">${esc(a.name)}</span><button type="button" class="account-pen" data-account="${esc(a.id)}" aria-label="Konto ${esc(a.name)} bearbeiten" title="Konto bearbeiten"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></button></span>
           ${accountDetails(a) ? `<span class="item-sub">${esc(accountDetails(a))}</span>` : ''}
           <span class="item-sub">${countLine(list, sum)}</span>
         </span>
@@ -2172,6 +2171,9 @@ $('#account-delete').addEventListener('click', async () => {
 
 // Konten-Seite: Konto antippen bzw. neues Konto
 $('#accounts').addEventListener('click', e => {
+  // Stift zuerst prüfen – er liegt im aufklappbaren Kopf
+  const edit = e.target.closest('[data-account]');
+  if (edit) { openAccountForm(edit.dataset.account); return; }
   const toggle = e.target.closest('[data-account-toggle]');
   if (toggle) {
     const key = toggle.dataset.accountToggle;
@@ -2184,9 +2186,11 @@ $('#accounts').addEventListener('click', e => {
     toggle.setAttribute('aria-expanded', String(isOpen));
     return;
   }
-  const edit = e.target.closest('[data-account]');
-  if (edit) { openAccountForm(edit.dataset.account); return; }
   if (e.target.closest('#account-add')) openAccountForm();
+});
+// Tastatur: Enter/Leertaste klappt ein Konto auf oder zu
+$('#accounts').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-account-toggle]')) { e.preventDefault(); e.target.click(); }
 });
 
 function uid() {

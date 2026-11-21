@@ -495,7 +495,7 @@ dialog.sheet.bottom-sheet {
 dialog.bottom-sheet .grabber { display: block; }
 /* Hochfahren: eigene Ebene (GPU), weiche Kurve, Hintergrund blendet mit ein */
 dialog.bottom-sheet { will-change: transform; backface-visibility: hidden; }
-dialog.bottom-sheet[open] { animation: sheet-up .42s cubic-bezier(.22, 1, .36, 1) both; }
+dialog.bottom-sheet[open] { animation: sheet-up .42s cubic-bezier(.22, 1, .36, 1); }
 @keyframes sheet-up { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
 dialog.bottom-sheet[open]::backdrop { animation: backdrop-in .35s ease both; }
 dialog.bottom-sheet.closing::backdrop { animation: backdrop-out .3s ease both; }
@@ -548,7 +548,7 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .account-head .item-title { color: #fff; font-size: 1.05rem; white-space: normal; overflow-wrap: break-word; hyphens: auto; }
 .account-head .item-sub, .account-head .item-interval { color: rgba(255, 255, 255, .72); }
 .account-head .price { color: var(--mint); font-size: 1.15rem; }
-.account-head:hover .item-title { color: var(--mint); }
+@media (hover: hover) { .account-head:hover .item-title { color: var(--mint); } }
 .account-head:focus-visible { outline: 2px solid var(--mint); outline-offset: -4px; }
 .account-head .avatar { width: 46px; height: 46px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .18); }
 .account-head .item-sub + .item-sub { font-size: .8rem; }
@@ -561,7 +561,15 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .account-card:not(.open) .account-inner { visibility: hidden; transition: visibility 0s .25s; }
 .account-empty { margin: 0; padding: 14px 14px 0; }
 .account-inner > .list { gap: 8px; padding: 12px 12px 0; }
-.account-edit { display: block; margin: 10px 12px 12px auto; min-height: 38px; padding: 6px 14px; font-size: .9rem; }
+.account-inner > :last-child { margin-bottom: 12px; }
+.account-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.account-pen {
+  flex-shrink: 0; width: 30px; height: 30px; margin: -4px 0; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(255, 255, 255, .12); color: #fff; cursor: pointer;
+}
+.account-pen svg { width: 14px; height: 14px; }
+.account-pen:hover, .account-pen:active { background: var(--mint); color: #0f172a; }
+.account-pen:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 #account-add { margin-top: 4px; }
 .iban-row { display: flex; gap: 8px; }
 .iban-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
