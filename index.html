@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=1.31.0">
+  <link rel="stylesheet" href="styles.css?v=1.32.0">
 </head>
 <body>
   <header class="topbar" id="topbar">
@@ -190,11 +190,18 @@
             <div class="field span-2 logo-field">
               <span>Logo</span>
               <div class="logo-row">
-                <span id="form-logo-preview"></span>
-                <div class="logo-choice" role="group" aria-label="Logo-Art">
-                  <button type="button" class="chip" data-logo-mode="auto">Automatisch</button>
-                  <button type="button" class="chip" data-logo-mode="custom">Eigenes Bild …</button>
-                  <button type="button" class="chip" data-logo-mode="none">Nur Buchstabe</button>
+                <button type="button" class="logo-btn" id="logo-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Logo ändern">
+                  <span id="form-logo-preview"></span>
+                  <span class="logo-pen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></span>
+                </button>
+                <button type="button" class="logo-text" id="logo-text" aria-haspopup="menu" tabindex="-1">
+                  <strong id="logo-mode-label">Automatisch</strong>
+                  <span>Logo ändern</span>
+                </button>
+                <div class="logo-menu" id="logo-menu" role="menu" hidden>
+                  <button type="button" role="menuitemradio" data-logo-mode="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 20 11-11"/><path d="M15 4v2M15 10v2M11 7h2M17 7h2"/><path d="M19 13v2M18 14h2M7 4v2M6 5h2"/></svg><span>Automatisch</span><svg class="lm-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></button>
+                  <button type="button" role="menuitemradio" data-logo-mode="custom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg><span>Eigenes Bild …</span><svg class="lm-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></button>
+                  <button type="button" role="menuitemradio" data-logo-mode="none"><b class="lm-aa" aria-hidden="true">Aa</b><span>Nur Buchstabe</span><svg class="lm-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></button>
                 </div>
               </div>
               <div class="logo-progress" id="logo-progress" role="progressbar" aria-label="Logo wird geladen" aria-valuemin="0" aria-valuemax="100" hidden>
@@ -513,6 +520,6 @@
       }, 2500);
     });
   </script>
-  <script src="app.js?v=1.31.0"></script>
+  <script src="app.js?v=1.32.0"></script>
 </body>
 </html>

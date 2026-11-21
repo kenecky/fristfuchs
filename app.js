@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1576,6 +1576,7 @@ function openForm(id = null) {
   fillAccountSelect();
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
   if (!form.elements.status.value) form.elements.status.value = 'active';
+  setLogoMenu(false);
   $('#price-rows').innerHTML = '';
   for (const p of id ? pricePeriods(c) : [{}]) addPriceRow(p);
   endDateAuto = false;
@@ -1708,7 +1709,8 @@ function updateFormTitle(data, loading = false) {
 function updateLogoPreview() {
   const data = { name: form.elements.name.value.trim() || '?', provider: form.elements.provider.value, website: form.elements.website.value,
     logoMode: form.elements.logoMode.value || 'auto', logo: form.elements.logo.value };
-  for (const b of $$('[data-logo-mode]', form)) b.setAttribute('aria-pressed', String(b.dataset.logoMode === data.logoMode));
+  for (const b of $$('[data-logo-mode]', form)) b.setAttribute('aria-checked', String(b.dataset.logoMode === data.logoMode));
+  $('#logo-mode-label').textContent = { auto: 'Automatisch', custom: 'Eigenes Bild', none: 'Nur Buchstabe' }[data.logoMode] || 'Automatisch';
   if (logoLoading) {
     // Während der Suche: pulsierender Anfangsbuchstabe, Suchtext bleibt stehen
     $('#form-logo-preview').innerHTML = avatar({ ...data, logoMode: 'none' }, 'pulse');
@@ -1719,7 +1721,7 @@ function updateLogoPreview() {
   updateFormTitle(data);
   const domain = logoDomain(data);
   let hint;
-  if (data.logoMode === 'custom') hint = 'Eigenes Bild. Tippe erneut auf „Eigenes Bild …“, um es zu ersetzen.';
+  if (data.logoMode === 'custom') hint = 'Eigenes Bild. Tippe auf das Logo und „Eigenes Bild …“, um es zu ersetzen.';
   else if (data.logoMode === 'none') hint = 'Es wird nur der Anfangsbuchstabe angezeigt.';
   else if (!settings.autoLogos) hint = 'Automatische Logos sind unter „Mehr“ ausgeschaltet – es wird der Anfangsbuchstabe angezeigt.';
   else if (domain && logoCache[domain] && logoCache[domain].src === null) hint = `Für ${domain} wurde kein Logo gefunden. Trage unten die richtige Website ein oder wähle ein eigenes Bild.`;
@@ -1812,9 +1814,24 @@ form.addEventListener('input', e => {
     }, 500);
   }
 });
+/* Logo-Menü öffnen/schließen */
+function setLogoMenu(open) {
+  $('#logo-menu').hidden = !open;
+  $('#logo-btn').setAttribute('aria-expanded', String(open));
+  if (open) ($('#logo-menu [aria-checked=true]') || $('#logo-menu button')).focus({ preventScroll: true });
+}
+for (const id of ['#logo-btn', '#logo-text']) $(id).addEventListener('click', () => setLogoMenu($('#logo-menu').hidden));
+// Tipp außerhalb oder Escape schließt das Menü
+$('#dlg-form').addEventListener('pointerdown', e => {
+  if (!$('#logo-menu').hidden && !e.target.closest('#logo-menu, #logo-btn, #logo-text')) setLogoMenu(false);
+});
+$('#logo-menu').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); setLogoMenu(false); $('#logo-btn').focus(); }
+});
 form.addEventListener('click', e => {
   const btn = e.target.closest('[data-logo-mode]');
   if (!btn) return;
+  setLogoMenu(false);
   const mode = btn.dataset.logoMode;
   if (mode === 'custom') { $('#logo-file').click(); return; }
   formDirty = true;
