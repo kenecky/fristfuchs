@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.35.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1283,7 +1283,7 @@ $('#doc-form').addEventListener('submit', async e => {
       const { originalSize, ...p } = pendingFile;
       await docStore.put({ id: uid(), contractId: currentId, name, ...p, createdAt: new Date().toISOString() });
       toast('Dokument gespeichert');
-      if (formIsNew) formDirty = true;   // neuer Vertrag noch nicht gespeichert → Rückfrage vor dem Verwerfen
+      if (!editingId) formDirty = true;   // neuer Vertrag noch nicht gespeichert → Rückfrage vor dem Verwerfen
     }
   } catch {
     toast('Speichern fehlgeschlagen – ist der Gerätespeicher voll?');
@@ -1558,6 +1558,63 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if ($('#dlg-viewer').open) applyZoom(); }, 150);
 });
 
+/* ---------- Gespeichert-Anzeige ---------- */
+
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
+let measureCtx;
+function textWidth(text, el) {
+  measureCtx ||= document.createElement('canvas').getContext('2d');
+  const cs = getComputedStyle(el);
+  measureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  return measureCtx.measureText(text).width;
+}
+/**
+ * Zeigt „Gespeichert ✓“ (oder einen Fehler) innen rechts im Feld – wenn dort kein Platz ist, darunter.
+ */
+function showSaved(el, { error = '' } = {}) {
+  if (!el || !el.isConnected || el.type === 'hidden') return;
+  const host = el.parentElement;
+  el._savedBadge?.remove();
+  clearTimeout(el._savedTimer);
+  const badge = document.createElement('span');
+  badge.className = 'saved-badge' + (error ? ' error' : '');
+  badge.innerHTML = error ? esc(error) : `Gespeichert ${CHECK_SVG}`;
+  badge.setAttribute('role', 'status');
+  // Platz im Feld: Breite minus Text, Innenabstand und ggf. Pfeil/Kalendersymbol
+  const isDate = el.type === 'date';
+  const isSelect = el.tagName === 'SELECT';
+  const isArea = el.tagName === 'TEXTAREA';
+  const isCheck = el.type === 'checkbox';
+  const reserve = isSelect ? 34 : isDate ? 40 : 14;
+  const shown = isSelect ? (el.selectedOptions[0]?.textContent || '') : isDate ? (el.value ? '00.00.0000' : '') : el.value;
+  const free = el.clientWidth - textWidth(shown, el) - reserve - 16;
+  const need = error ? textWidth(error, el) * .85 + 12 : 100;
+  if (!isCheck && (isArea || free >= need)) {
+    badge.classList.add('inside');
+    const right = host.clientWidth - (el.offsetLeft + el.offsetWidth) + reserve - (isArea ? 6 : 4);
+    badge.style.right = `${Math.max(4, right)}px`;
+    badge.style.top = `${isArea ? el.offsetTop + el.offsetHeight - 14 : el.offsetTop + el.offsetHeight / 2}px`;
+    host.appendChild(badge);
+  } else {
+    badge.classList.add('below');
+    (isCheck ? host : el).insertAdjacentElement('afterend', badge);
+  }
+  el._savedBadge = badge;
+  el._savedTimer = setTimeout(() => {
+    badge.classList.add('out');
+    setTimeout(() => badge.remove(), 700);
+  }, error ? 4000 : 2400);
+}
+function flashNote(note) {
+  if (!note) return;
+  const old = note.dataset.text || note.textContent;
+  note.dataset.text = old;
+  note.innerHTML = `Gespeichert ${CHECK_SVG.replace('<svg', '<svg style="width:12px;height:12px;vertical-align:-1px"')}`;
+  note.classList.add('flash');
+  clearTimeout(note._t);
+  note._t = setTimeout(() => { note.textContent = old; note.classList.remove('flash'); }, 2000);
+}
+
 /* ---------- Formular ---------- */
 
 const form = $('#contract-form');
@@ -1596,6 +1653,8 @@ function openForm(id = null) {
   $('#doc-count').textContent = '';
   updateFormState();
   formDirty = false;
+  clearTimeout(saveTimer); saveTimer = null; saveSource = null;
+  lastSavedJSON = id ? JSON.stringify(readForm()) : '';
   // Über einem anderen Fenster (Fristen, Suche) etwas niedriger, damit beide gestaffelt sichtbar sind
   $('#dlg-form').classList.toggle('stacked', $$('dialog.bottom-sheet[open]').length > 0);
   $('#dlg-form').showModal();
@@ -1650,6 +1709,7 @@ function focusFormField(el) {
 }
 // Neuer Vertrag verworfen → bereits angehängte Dokumente wieder entfernen
 $('#dlg-form').addEventListener('close', async () => {
+  flushContractSave();
   if (!formIsNew || formSaved) return;
   const docs = await docStore.byContract(currentId).catch(() => []);
   if (!docs.length) return;
@@ -1660,14 +1720,73 @@ $('#dlg-form').addEventListener('close', async () => {
 
 /* Ungespeicherte Eingaben schützen: Rückfrage vor dem Schließen */
 let formDirty = false;
-form.addEventListener('input', () => { formDirty = true; });
-form.addEventListener('change', e => { if (e.isTrusted) formDirty = true; });
+/* Automatisch speichern: jede Änderung landet sofort beim Vertrag */
+let saveTimer = null, saveSource = null, lastSavedJSON = '';
+function scheduleContractSave(el = null, delay = 0) {
+  formDirty = true;
+  if (el) saveSource = el;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveContractNow(), delay);
+}
+function markChanged() { scheduleContractSave(null, 0); }
+function flushContractSave() { if (saveTimer) { clearTimeout(saveTimer); saveContractNow(); } }
+function saveContractNow() {
+  saveTimer = null;
+  const el = saveSource; saveSource = null;
+  const data = readForm();
+  if (!Number.isFinite(data.amount)) data.amount = 0;
+  if (!data.name) {
+    // Ohne Namen wird nichts gespeichert; beim Bearbeiten bleibt der bisherige Name erhalten
+    if (editingId || (el && el.name === 'name')) showSaved(form.elements.name, { error: 'Name fehlt' });
+    return false;
+  }
+  const bad = data.prices.find(p => p.from && p.to && p.to < p.from);
+  if (bad) {
+    const row = $$('#price-rows .price-row').find(r => r.querySelector('.pr-from').value === bad.from);
+    showSaved(row?.querySelector('.pr-to') || el, { error: '„bis“ vor „von“' });
+    return false;
+  }
+  const json = JSON.stringify(data);
+  if (json === lastSavedJSON) return true;
+  const now = new Date().toISOString();
+  if (editingId) {
+    const idx = contracts.findIndex(x => x.id === editingId);
+    contracts[idx] = { ...contracts[idx], ...data, updatedAt: now };
+  } else {
+    // Erstes Speichern eines neuen Vertrags: ab jetzt wird er bearbeitet
+    contracts.push({ id: currentId || uid(), ...data, createdAt: now, updatedAt: now });
+    editingId = currentId;
+    formSaved = true;
+    $('#form-delete').hidden = false;
+    updateLogoPreview();
+  }
+  lastSavedJSON = json;
+  formDirty = false;
+  persist();
+  renderAll();
+  updateFormState();
+  if (el && el.isConnected && el.closest('#contract-form') && el.type !== 'hidden') showSaved(el);
+  else flashNote($('#form-autosave-note'));
+  return true;
+}
+form.addEventListener('input', e => {
+  if (!e.target.matches('input, textarea, select')) return;
+  // Tippen: kurz warten, bis die Eingabe ruht; Auswahl/Datum: sofort
+  const typing = e.target.matches('input:not([type=date]):not([type=checkbox]), textarea');
+  scheduleContractSave(e.target, typing ? 700 : 0);
+});
+form.addEventListener('change', e => {
+  if (!e.target.matches('input, textarea, select') || e.target.value === '__new__') return;
+  scheduleContractSave(e.target, 0);
+});
 $('#dlg-form').guardClose = async () => {
-  if (!formDirty) return true;
+  flushContractSave();
+  // Nur ein neuer Vertrag ohne Namen geht beim Schließen verloren
+  if (editingId || !formDirty) return true;
   return (await ask({
-    title: 'Änderungen verwerfen?',
-    message: editingId ? 'Deine Änderungen an diesem Vertrag werden nicht gespeichert.' : 'Der neue Vertrag wird nicht gespeichert.',
-    buttons: [{ label: 'Verwerfen', value: true, kind: 'danger' }, { label: 'Weiter bearbeiten', value: false }],
+    title: 'Vertrag ohne Namen verwerfen?',
+    message: 'Ein Vertrag wird erst gespeichert, wenn ein Name eingetragen ist.',
+    buttons: [{ label: 'Verwerfen', value: true, kind: 'danger' }, { label: 'Name eingeben', value: false }],
   })) === true;
 };
 
@@ -1833,7 +1952,7 @@ form.addEventListener('click', e => {
   setLogoMenu(false);
   const mode = btn.dataset.logoMode;
   if (mode === 'custom') { $('#logo-file').click(); return; }
-  formDirty = true;
+  markChanged();
   logoRun++;
   setLogoProgress(null);
   form.elements.logoMode.value = mode;
@@ -1849,7 +1968,7 @@ $('#logo-file').addEventListener('change', async e => {
     setLogoProgress(null);
     form.elements.logo.value = await prepareLogo(file);
     form.elements.logoMode.value = 'custom';
-    formDirty = true;
+    markChanged();
     updateLogoPreview();
   } catch {
     toast('Dieses Bild kann nicht gelesen werden. Bitte JPG oder PNG verwenden.');
@@ -1873,7 +1992,7 @@ $('#price-add').addEventListener('click', () => {
   const rows = $$('#price-rows .price-row');
   const lastTo = parseISO(rows.at(-1)?.querySelector('.pr-to').value);
   const row = addPriceRow({ from: lastTo ? toISO(addDays(lastTo, 1)) : '' });
-  formDirty = true;
+  markChanged();
   updateFormState();
   row.querySelector(lastTo ? '.pr-amount' : '.pr-from').focus();
 });
@@ -1882,7 +2001,7 @@ $('#price-rows').addEventListener('click', e => {
   if (!del) return;
   del.closest('.price-row').remove();
   if (!$('#price-rows .price-row')) addPriceRow();
-  formDirty = true;
+  markChanged();
   updateFormState();
 });
 function updatePriceInfo(d) {
@@ -1974,7 +2093,7 @@ $('#step-cancel').addEventListener('click', async () => {
     endDateAuto = true;
     fillAutoEndDate();
   }
-  formDirty = true;
+  markChanged();
   updateFormState();
 });
 $('#step-confirm').addEventListener('click', async () => {
@@ -1989,7 +2108,7 @@ $('#step-confirm').addEventListener('click', async () => {
   } else {
     form.elements.cancelConfirmedAt.value = toISO(today());
   }
-  formDirty = true;
+  markChanged();
   updateFormState();
 });
 form.elements.cancelledAt.addEventListener('change', () => { fillAutoEndDate(); updateFormState(); });
@@ -2018,26 +2137,20 @@ function updateFormState() {
 form.addEventListener('input', updateFormState);
 form.addEventListener('change', updateFormState);
 
+// „Fertig“ (oder Enter): noch offene Änderung speichern und schließen
 form.addEventListener('submit', e => {
   e.preventDefault();
-  const data = readForm();
-  if (!data.name) { toast('Bitte einen Namen eingeben.'); focusFormField(form.elements.name); return; }
-  if (!Number.isFinite(data.amount)) { toast('Bitte einen Betrag eingeben.'); focusFormField($('#price-rows .pr-amount') || $('#price-add')); return; }
-  const bad = data.prices.find(p => p.from && p.to && p.to < p.from);
-  if (bad) { toast('Bei einem Zeitraum liegt „bis“ vor „von“.'); focusFormField($('#price-rows .pr-to')); return; }
-  const now = new Date().toISOString();
-  if (editingId) {
-    const idx = contracts.findIndex(x => x.id === editingId);
-    contracts[idx] = { ...contracts[idx], ...data, updatedAt: now };
-  } else {
-    // Die ID wurde beim Öffnen vergeben, damit Dokumente schon vor dem Speichern angehängt werden können
-    contracts.push({ id: currentId || uid(), ...data, createdAt: now, updatedAt: now });
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!editingId && !formDirty) { closeSheet($('#dlg-form'), true); return; }
+  if (!saveContractNow()) {
+    // Ungültige Eingabe (Name fehlt, „bis“ vor „von“): offen lassen, damit nichts unbemerkt verloren geht
+    const nameMissing = !form.elements.name.value.trim();
+    toast(nameMissing ? 'Bitte einen Namen eingeben.' : 'Bitte die rot markierte Eingabe prüfen.');
+    if (nameMissing) focusFormField(form.elements.name);
+    else { const bad = $('#price-rows .saved-badge.error'); if (bad) setFormTab(1); }
+    return;
   }
-  persist();
-  renderAll();
-  formSaved = true;
   closeSheet($('#dlg-form'), true);
-  toast(editingId ? 'Änderungen gespeichert' : 'Vertrag angelegt');
 });
 
 /* ---------- Konto anlegen / bearbeiten ---------- */
@@ -2073,6 +2186,8 @@ form.elements.accountId.addEventListener('change', e => {
 
 function openAccountForm(id = null, forContract = false) {
   editingAccountId = id;
+  accountCreated = null;
+  clearTimeout(accSaveTimer); accSaveTimer = null;
   accountForContract = forContract;
   const a = accountById(id) || { type: 'giro' };
   accForm.reset();
@@ -2116,41 +2231,71 @@ $('#iban-copy').addEventListener('click', async () => {
   catch { toast('Kopieren nicht möglich'); }
 });
 
-accForm.addEventListener('submit', e => {
-  e.preventDefault();
+/* Konto: jede Änderung wird sofort gespeichert */
+let accSaveTimer = null, accSaveSource = null, accountCreated = null;
+function scheduleAccountSave(el, delay) {
+  accSaveSource = el || accSaveSource;
+  clearTimeout(accSaveTimer);
+  accSaveTimer = setTimeout(saveAccountNow, delay);
+}
+function saveAccountNow() {
+  accSaveTimer = null;
+  const el = accSaveSource; accSaveSource = null;
   const v = f => accForm.elements[f].value.trim();
   const name = v('name');
-  if (!name) { toast('Bitte einen Namen eingeben.'); accForm.elements.name.focus(); return; }
+  if (!name) { if (editingAccountId || el?.name === 'name') showSaved(accForm.elements.name, { error: 'Name fehlt' }); return false; }
   if (accounts.some(a => a.id !== editingAccountId && a.name.toLowerCase() === name.toLowerCase())) {
-    toast('Ein Konto mit diesem Namen gibt es schon.'); accForm.elements.name.focus(); return;
+    showSaved(accForm.elements.name, { error: 'Name schon vergeben' }); return false;
   }
   const type = accountFormType();
   const iban = ['giro', 'tagesgeld', 'sonstiges'].includes(type) ? normIban(v('iban')) : '';
-  if (iban && !ibanValid(iban)) { toast('Die IBAN ist nicht gültig.'); accForm.elements.iban.focus(); return; }
+  if (iban && !ibanValid(iban)) { if (el?.name === 'iban' && normIban(v('iban')).length >= 15) showSaved(accForm.elements.iban, { error: 'IBAN ungültig' }); return false; }
   const card = type === 'kredit' ? v('cardLast4') : '';
-  if (card && !/^\d{4}$/.test(card)) { toast('Bitte genau 4 Ziffern der Karte eingeben.'); accForm.elements.cardLast4.focus(); return; }
+  if (card && !/^\d{4}$/.test(card)) { if (el?.name === 'cardLast4') showSaved(accForm.elements.cardLast4, { error: '4 Ziffern' }); return false; }
   const data = { name, type, bank: accountById(editingAccountId)?.bank || '', iban, cardLast4: card, email: type === 'paypal' ? v('email') : '', notes: v('notes') };
-
   let acc;
   if (editingAccountId) {
     acc = accountById(editingAccountId);
-    Object.assign(acc, data, { updatedAt: new Date().toISOString() });
+    const before = JSON.stringify({ ...acc, updatedAt: 0 });
+    Object.assign(acc, data);
+    if (JSON.stringify({ ...acc, updatedAt: 0 }) === before) return true;
+    acc.updatedAt = new Date().toISOString();
     // Umbenennen: Namen bei allen zugehörigen Verträgen nachziehen
     for (const c of contracts) if (c.accountId === acc.id) c.account = acc.name;
     persist();
   } else {
     acc = { id: uid(), ...data, createdAt: new Date().toISOString() };
     accounts.push(acc);
+    editingAccountId = acc.id;
+    accountCreated = acc.id;
+    $('#account-delete').hidden = false;
+    $('#account-form-title').textContent = 'Konto bearbeiten';
   }
   persistAccounts();
-  closeSheet($('#dlg-account'), true);
   renderAll();
-  if (accountForContract && $('#dlg-form').open) {
-    formDirty = true;
-    fillAccountSelect(acc.id);
-    form.elements.accountId.dispatchEvent(new Event('change'));
+  if (el && el.isConnected) showSaved(el); else flashNote($('#dlg-account .autosave-note'));
+  return true;
+}
+accForm.addEventListener('input', e => {
+  if (!e.target.matches('input, textarea, select')) return;
+  scheduleAccountSave(e.target, e.target.matches('textarea, input:not([type=checkbox])') ? 700 : 0);
+});
+accForm.addEventListener('change', e => { if (e.target.matches('input, textarea, select')) scheduleAccountSave(e.target, 0); });
+accForm.addEventListener('submit', e => {
+  e.preventDefault();
+  clearTimeout(accSaveTimer);
+  if (!editingAccountId && !accForm.elements.name.value.trim()) { closeSheet($('#dlg-account'), true); return; }
+  if (!saveAccountNow() && !editingAccountId) { toast('Bitte das Konto prüfen.'); return; }
+  closeSheet($('#dlg-account'), true);
+});
+$('#dlg-account').addEventListener('close', () => {
+  if (accSaveTimer) { clearTimeout(accSaveTimer); saveAccountNow(); }
+  // Aus dem Vertragsformular angelegt → dort gleich auswählen
+  if (accountForContract && accountCreated && $('#dlg-form').open) {
+    fillAccountSelect(accountCreated);
+    form.elements.accountId.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  toast(editingAccountId ? 'Konto gespeichert' : 'Konto angelegt');
+  accountCreated = null;
 });
 
 $('#account-delete').addEventListener('click', async () => {
@@ -2655,13 +2800,14 @@ $('#set-warn-days').addEventListener('change', e => {
   e.target.value = settings.warnDays;
   saveSettings();
   renderAll();
+  showSaved(e.target);
 });
 $('#set-auto-logos').addEventListener('change', e => {
   settings.autoLogos = e.target.checked;
   saveSettings();
   if (!settings.autoLogos) { logoCache = {}; saveLogoCache(); }
   renderAll();
-  toast(settings.autoLogos ? 'Logos werden automatisch geladen' : 'Automatische Logos ausgeschaltet');
+  showSaved(e.target);
 });
 $('#btn-notify').addEventListener('click', async () => {
   const p = await Notification.requestPermission();
