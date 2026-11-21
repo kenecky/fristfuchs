@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.27.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -217,6 +217,8 @@ function addNotice(d, value, unit) {
 }
 function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
 function fmtDate(d) { return d ? dateFmt.format(d) : '–'; }
+const shortDateFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+function fmtShort(d) { return d ? shortDateFmt.format(d) : ''; }
 function fmtISO(s) { return fmtDate(parseISO(s)); }
 function relDays(n) {
   if (n === 0) return 'heute';
@@ -227,9 +229,38 @@ function relDays(n) {
 
 /* ---------- Fachlogik ---------- */
 
+/* Preise: Betrag ab Vertragsbeginn, weitere Preise ab bestimmten Daten und Preis nach automatischer Verlängerung */
+const hasNum = v => v !== '' && v != null && Number.isFinite(Number(v));
+function renewalStart(c) {
+  const start = parseISO(c.startDate);
+  const first = Number(c.minTermMonths) || Number(c.renewalMonths) || 0;
+  return start && first ? addMonths(start, first) : null;
+}
+function priceTimeline(c) {
+  const list = [{ from: parseISO(c.startDate) || new Date(0), amount: Number(c.amount) || 0, kind: 'base' }];
+  for (const p of c.priceSteps || []) {
+    const d = parseISO(p.from);
+    if (d && hasNum(p.amount)) list.push({ from: d, amount: Number(p.amount), kind: 'step' });
+  }
+  const r = renewalStart(c);
+  if (r && hasNum(c.renewalAmount)) list.push({ from: r, amount: Number(c.renewalAmount), kind: 'renewal' });
+  return list.sort((a, b) => a.from - b.from);
+}
+function priceAt(c, d = today()) {
+  const list = priceTimeline(c);
+  let cur = list.find(e => e.kind === 'base');
+  for (const e of list) if (e.from <= d) cur = e;
+  return cur;
+}
+const currentAmount = c => priceAt(c).amount;
+function nextPriceChange(c, d = today()) {
+  const cur = currentAmount(c);
+  return priceTimeline(c).find(e => e.from > d && e.amount !== cur) || null;
+}
+
 function monthlyCost(c) {
   const i = INTERVALS[c.interval] || INTERVALS.monthly;
-  return (Number(c.amount) || 0) * i.perMonth;
+  return currentAmount(c) * i.perMonth;
 }
 function isCosting(c) { return c.status === 'active' || c.status === 'cancelled'; }
 
@@ -301,6 +332,8 @@ function normalizeCancellations() {
   let changed = false;
   const t = today();
   for (const c of contracts) {
+    // Früher gab es nur ein Feld „Vertrags-/Kundennummer“ – das wird zur Kundennummer
+    if (c.customerNo === undefined) { c.customerNo = c.contractNo || ''; c.contractNo = ''; changed = true; }
     if ((c.status === 'cancelled' || c.status === 'ended') && c.cancelConfirmedAt === undefined) {
       c.cancelConfirmedAt = c.cancelledAt || ''; changed = true;
     }
@@ -562,6 +595,8 @@ function itemHTML(c) {
   const sub = [[c.category, c.account].filter(Boolean).map(esc).join(' · ') || esc(c.provider || ''), clip].filter(Boolean).join(' · ');
   // Bei nicht-monatlicher Zahlung zusätzlich den Monatswert zeigen
   const perMonth = c.interval !== 'monthly' ? `<span class="item-permonth">≈ ${eur.format(monthlyCost(c))}/Monat</span>` : '';
+  // Nächste Preisänderung (nur bei laufenden Verträgen)
+  const next = c.status === 'ended' ? null : nextPriceChange(c);
   return `
     <button type="button" class="item" data-id="${esc(c.id)}">
       ${avatar(c)}
@@ -571,9 +606,10 @@ function itemHTML(c) {
         <span class="item-badge">${scheduleBadge(s)}</span>
       </span>
       <span class="item-side">
-        <span class="price">${eur.format(Number(c.amount) || 0)}</span>
+        <span class="price">${eur.format(currentAmount(c))}</span>
         <span class="item-interval">${iv.label}</span>
         ${perMonth}
+        ${next ? `<span class="item-next">ab ${fmtShort(next.from)}: ${eur.format(next.amount)}</span>` : ''}
       </span>
     </button>`;
 }
@@ -614,11 +650,13 @@ function renderDashboard() {
   }
   const rows = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const max = rows.length ? rows[0][1] : 0;
+  const total = rows.reduce((s, r) => s + r[1], 0);
+  const pctFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   $('#by-category').innerHTML = rows.length
     ? rows.map(([k, v]) => `
         <div class="bar-row">
           <span class="bar-label" title="${esc(k)}">${esc(k)}</span>
-          <span class="bar-track"><span class="bar-fill" style="width:${max ? (v / max * 100).toFixed(1) : 0}%;display:block"></span></span>
+          <span class="bar-track">${barHTML(max ? v / max * 100 : 0, total ? pctFmt.format(v / total * 100) + ' %' : '')}</span>
           <span class="bar-value">${eur.format(v)}</span>
         </div>`).join('')
     : '<p class="hint">Noch keine Kosten erfasst.</p>';
@@ -641,6 +679,13 @@ function renderDeadlines(withDeadline, due) {
   $('#deadlines-body').innerHTML = html || (contracts.length === 0
     ? emptyHTML('Noch keine Verträge erfasst. Leg los – oder lade unter „Mehr“ Beispieldaten.')
     : emptyHTML('Keine anstehenden Fristen. Trage Abschlussdatum, Laufzeit und Kündigungsfrist ein, damit Fristen berechnet werden.', false));
+}
+
+// Balken mit Prozentangabe: im Balken, wenn genug Platz ist, sonst direkt dahinter
+function barHTML(width, label) {
+  const inside = width >= 34;
+  return `<span class="bar-fill" style="width:${width.toFixed(1)}%"></span>`
+    + `<span class="bar-pct ${inside ? 'in' : 'out'}" style="${inside ? `right:calc(${(100 - width).toFixed(1)}% + 8px)` : `left:calc(${width.toFixed(1)}% + 6px)`}">${label}</span>`;
 }
 
 function sortContracts(list, sort = 'deadline') {
@@ -709,7 +754,7 @@ function renderSearch(force = false) {
     (searchStatus === 'all' || c.status === searchStatus) &&
     (!cat || c.category === cat) &&
     (!acc || (c.account || '') === acc) &&
-    (!q || [c.name, c.provider, c.category, c.account, c.contractNo, c.notes].some(v => String(v || '').toLowerCase().includes(q)))
+    (!q || [c.name, c.provider, c.category, c.account, c.customerNo, c.contractNo, c.notes].some(v => String(v || '').toLowerCase().includes(q)))
   ), sort);
 
   const filtered = raw || searchStatus !== 'all' || cat || acc || sort !== 'deadline';
@@ -1449,7 +1494,7 @@ window.addEventListener('resize', () => {
 /* ---------- Formular ---------- */
 
 const form = $('#contract-form');
-const FIELDS = ['name', 'provider', 'category', 'status', 'contractNo', 'amount', 'interval', 'accountId', 'paymentMethod',
+const FIELDS = ['name', 'provider', 'category', 'status', 'customerNo', 'contractNo', 'amount', 'renewalAmount', 'interval', 'accountId', 'paymentMethod',
   'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate', 'website', 'cancelContact', 'notes',
   'logoMode', 'logo'];
 let editingId = null;
@@ -1463,6 +1508,8 @@ function openForm(id = null) {
   fillAccountSelect();
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
   if (!form.elements.status.value) form.elements.status.value = 'active';
+  $('#price-steps').innerHTML = '';
+  for (const p of c.priceSteps || []) addPriceStep(p);
   endDateAuto = false;
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
@@ -1546,7 +1593,15 @@ $('#dlg-form').guardClose = async () => {
 function readForm() {
   const data = {};
   for (const f of FIELDS) data[f] = form.elements[f].value.trim();
-  data.amount = data.amount === '' ? 0 : Math.round(parseFloat(data.amount.replace(',', '.')) * 100) / 100;
+  const money = v => Math.round(parseFloat(String(v).replace(',', '.')) * 100) / 100;
+  data.amount = data.amount === '' ? 0 : money(data.amount);
+  data.renewalAmount = data.renewalAmount === '' ? '' : money(data.renewalAmount);
+  data.priceSteps = $$('#price-steps .price-step')
+    .map(row => ({ from: row.querySelector('.ps-from').value, amount: row.querySelector('.ps-amount').value.trim() }))
+    .filter(p => p.from && p.amount !== '')
+    .map(p => ({ from: p.from, amount: money(p.amount) }))
+    .filter(p => Number.isFinite(p.amount))
+    .sort((a, b) => a.from.localeCompare(b.from));
   for (const n of ['minTermMonths', 'renewalMonths', 'noticeValue']) data[n] = data[n] === '' ? '' : Math.max(0, parseInt(data[n], 10) || 0);
   if (data.status === 'active') { data.cancelledAt = ''; data.cancelMethod = ''; data.cancelConfirmedAt = ''; data.endDate = ''; }
   else {
@@ -1696,6 +1751,42 @@ $('#logo-file').addEventListener('change', async e => {
   }
 });
 
+/* Weitere Preise ab Datum */
+function addPriceStep(p = {}) {
+  const row = document.createElement('div');
+  row.className = 'price-step';
+  row.innerHTML = `<span class="ps-label">ab</span>
+    <input type="date" class="ps-from" aria-label="Gilt ab" value="${esc(p.from || '')}">
+    <input type="number" class="ps-amount" step="0.01" min="0" inputmode="decimal" placeholder="Betrag €" aria-label="Betrag" value="${hasNum(p.amount) ? esc(String(p.amount)) : ''}">
+    <button type="button" class="icon-btn ps-del" aria-label="Preis entfernen">✕</button>`;
+  $('#price-steps').appendChild(row);
+  return row;
+}
+$('#price-add').addEventListener('click', () => {
+  const row = addPriceStep();
+  formDirty = true;
+  row.querySelector('.ps-from').focus();
+});
+$('#price-steps').addEventListener('click', e => {
+  const del = e.target.closest('.ps-del');
+  if (!del) return;
+  del.closest('.price-step').remove();
+  formDirty = true;
+  updateFormState();
+});
+function updatePriceInfo(d) {
+  const r = renewalStart(d);
+  $('#renewal-hint').textContent = r
+    ? `Gilt ab ${fmtDate(r)}, wenn sich der Vertrag nach ${Number(d.minTermMonths) ? 'der Mindestlaufzeit' : 'der ersten Laufzeit'} automatisch verlängert.`
+    : 'Trag unter „Laufzeit & Kündigung“ Vertragsbeginn und Laufzeit ein, dann wird das Datum berechnet.';
+  const timeline = priceTimeline(d);
+  if (timeline.length < 2) { $('#price-now').innerHTML = ''; return; }
+  const cur = priceAt(d);
+  const next = nextPriceChange(d);
+  $('#price-now').innerHTML = `Aktuell gültig: <strong>${eur.format(cur.amount)}</strong>`
+    + (next ? ` · ab ${fmtDate(next.from)}: <strong>${eur.format(next.amount)}</strong>${next.kind === 'renewal' ? ' (nach Verlängerung)' : ''}` : '');
+}
+
 /* Kündigungs-Ablauf: abgeschickt → bestätigt → ausgelaufen */
 let endDateAuto = false;
 function cancelState(d) {
@@ -1797,6 +1888,7 @@ function updateFormState() {
     p.textContent = '→ Trage das Abschlussdatum ein, um die Frist zu berechnen.';
   }
   updateCancelBox(data);
+  updatePriceInfo(data);
   // Beim Bearbeiten oben den Fristhinweis zeigen (wie früher in der Detailansicht), live aktualisiert
   $('#form-alert').innerHTML = editingId ? statusAlertHTML(data) : '';
   $('#form-ics').hidden = !(editingId && s.kind === 'deadline');
@@ -1982,7 +2074,7 @@ function icsEscape(s) { return String(s || '').replace(/[\\;,]/g, m => '\\' + m)
 function icsDate(d) { return toISO(d).replace(/-/g, ''); }
 function icsEvent(c, s) {
   const desc = `Letzter Tag zur Kündigung von "${c.name}". Laufzeitende: ${fmtDate(s.termEnd)}. ` +
-    `Kosten: ${eur.format(Number(c.amount) || 0)} ${(INTERVALS[c.interval] || INTERVALS.monthly).label}.` +
+    `Kosten: ${eur.format(currentAmount(c))} ${(INTERVALS[c.interval] || INTERVALS.monthly).label}.` +
     (c.cancelContact ? ` Kündigung an: ${c.cancelContact}.` : '');
   return [
     'BEGIN:VEVENT',
@@ -2026,11 +2118,14 @@ async function exportJSON() {
 
 function exportCSV() {
   const cols = [['Name', 'name'], ['Anbieter', 'provider'], ['Kategorie', 'category'], ['Status', c => STATUS[c.status]],
-    ['Betrag', c => String(c.amount).replace('.', ',')], ['Intervall', c => (INTERVALS[c.interval] || {}).label],
+    ['Betrag', c => String(c.amount).replace('.', ',')], ['Betrag aktuell', c => String(currentAmount(c)).replace('.', ',')],
+    ['Weitere Preise', c => (c.priceSteps || []).map(p => `ab ${fmtISO(p.from)}: ${String(p.amount).replace('.', ',')}`).join('; ')],
+    ['Preis nach Verlängerung', c => hasNum(c.renewalAmount) ? String(c.renewalAmount).replace('.', ',') : ''],
+    ['Intervall', c => (INTERVALS[c.interval] || {}).label],
     ['Monatlich', c => monthlyCost(c).toFixed(2).replace('.', ',')], ['Konto', 'account'], ['IBAN', c => formatIban(accountById(c.accountId)?.iban || '')], ['Zahlungsart', 'paymentMethod'],
     ['Abschluss', 'startDate'], ['Mindestlaufzeit (Monate)', 'minTermMonths'], ['Verlängerung (Monate)', 'renewalMonths'],
     ['Kündigungsfrist', noticeText], ['Kündigen bis', c => { const s = schedule(c); return s.kind === 'deadline' ? toISO(s.deadline) : ''; }],
-    ['Gekündigt am', 'cancelledAt'], ['Gekündigt per', 'cancelMethod'], ['Bestätigt am', 'cancelConfirmedAt'], ['Vertragsende', 'endDate'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
+    ['Gekündigt am', 'cancelledAt'], ['Gekündigt per', 'cancelMethod'], ['Bestätigt am', 'cancelConfirmedAt'], ['Vertragsende', 'endDate'], ['Kundennr.', 'customerNo'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
     ['Kündigung an', 'cancelContact'], ['Notizen', 'notes'], ['Dokumente', c => docCounts.get(c.id) || 0]];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.map(c => cell(c[0])).join(';'),
@@ -2099,11 +2194,11 @@ function demoData() {
   return [
     mk({ name: 'Netflix', provider: 'Netflix', category: 'Streaming', amount: 13.99, interval: 'monthly', account: 'Kreditkarte Visa', paymentMethod: 'Kreditkarte', startDate: iso(addMonths(t, -26)), minTermMonths: '', renewalMonths: 1, noticeValue: '', website: 'netflix.com' }),
     mk({ name: 'Spotify Family', provider: 'Spotify', category: 'Musik', amount: 17.99, interval: 'monthly', account: 'PayPal', paymentMethod: 'PayPal', startDate: iso(addMonths(t, -40)), renewalMonths: 1, noticeValue: '' }),
-    mk({ name: 'Handyvertrag', provider: 'Telekom', category: 'Mobilfunk', amount: 39.95, interval: 'monthly', account: 'Girokonto Sparkasse', paymentMethod: 'Lastschrift', startDate: iso(addDays(addMonths(t, -21), 20)), minTermMonths: 24, renewalMonths: 1, noticeValue: 1, noticeUnit: 'months', contractNo: 'MF-4711', cancelContact: 'kuendigung@example.com' }),
+    mk({ name: 'Handyvertrag', provider: 'Telekom', category: 'Mobilfunk', amount: 39.95, interval: 'monthly', account: 'Girokonto Sparkasse', paymentMethod: 'Lastschrift', startDate: iso(addDays(addMonths(t, -21), 20)), minTermMonths: 24, renewalMonths: 1, noticeValue: 1, noticeUnit: 'months', customerNo: 'K-208815', contractNo: 'MF-4711', renewalAmount: 49.95, cancelContact: 'kuendigung@example.com' }),
     mk({ name: 'Fitnessstudio', provider: 'FitX', category: 'Fitness', amount: 24.99, interval: 'monthly', account: 'Girokonto Sparkasse', paymentMethod: 'Lastschrift', startDate: iso(addDays(addMonths(t, -11), 12)), minTermMonths: 12, renewalMonths: 1, noticeValue: 1 }),
     mk({ name: 'Kfz-Versicherung', provider: 'HUK', category: 'Versicherung', amount: 412.6, interval: 'yearly', account: 'Girokonto Sparkasse', paymentMethod: 'Lastschrift', startDate: iso(new Date(t.getFullYear() - 3, 0, 1)), minTermMonths: 12, renewalMonths: 12, noticeValue: 1, notes: 'Stichtag 30.11. – Sonderkündigung bei Beitragserhöhung möglich.' }),
     mk({ name: 'Strom', provider: 'Stadtwerke', category: 'Strom', amount: 78, interval: 'monthly', account: 'Gemeinschaftskonto', paymentMethod: 'Lastschrift', startDate: iso(addMonths(t, -8)), minTermMonths: 12, renewalMonths: 1, noticeValue: 1 }),
-    mk({ name: 'Internet 250', provider: 'Vodafone', category: 'Internet', amount: 44.99, interval: 'monthly', account: 'Gemeinschaftskonto', paymentMethod: 'Lastschrift', startDate: iso(addMonths(t, -30)), minTermMonths: 24, renewalMonths: 1, noticeValue: 1 }),
+    mk({ name: 'Internet 250', provider: 'Vodafone', category: 'Internet', amount: 19.99, renewalAmount: 44.99, interval: 'monthly', account: 'Gemeinschaftskonto', paymentMethod: 'Lastschrift', startDate: iso(addMonths(t, -30)), minTermMonths: 24, renewalMonths: 1, noticeValue: 1 }),
     mk({ name: 'Microsoft 365', provider: 'Microsoft', category: 'Software', amount: 99, interval: 'yearly', account: 'Kreditkarte Visa', paymentMethod: 'Kreditkarte', startDate: iso(addDays(addMonths(t, -12), 40)), minTermMonths: 12, renewalMonths: 12, noticeValue: '' }),
     mk({ name: 'Zeitschrift', provider: 'Verlag', category: 'Zeitschriften', amount: 29.7, interval: 'quarterly', account: 'Girokonto Sparkasse', paymentMethod: 'Rechnung', startDate: iso(addMonths(t, -14)), status: 'cancelled', cancelledAt: iso(addDays(t, -10)), cancelMethod: 'E-Mail', cancelConfirmedAt: '', endDate: iso(addDays(t, 45)), minTermMonths: 12, renewalMonths: 3, noticeValue: 6, noticeUnit: 'weeks' }),
   ];

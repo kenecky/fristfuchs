@@ -715,3 +715,20 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
    so sieht man beide Fenster gestaffelt hintereinander */
 dialog.sheet.bottom-sheet#dlg-deadlines, dialog.sheet.bottom-sheet#dlg-search { height: min(94dvh, 900px); }
 dialog.sheet.bottom-sheet#dlg-form.stacked { height: min(84dvh, 800px); }
+
+/* Preise für unterschiedliche Zeiträume */
+.price-steps { display: flex; flex-direction: column; gap: 8px; }
+.price-steps:empty { display: none; }
+.price-step { display: grid; grid-template-columns: auto minmax(0, 1.3fr) minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.price-step .ps-label { color: var(--muted); font-weight: 600; font-size: .85rem; }
+.price-step input { min-width: 0; }
+.price-step .icon-btn { width: 38px; height: 38px; color: var(--danger); }
+.price-now { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: .9rem; }
+.price-now:empty { display: none; }
+.item-next { color: var(--accent-text); font-size: .76rem; font-weight: 600; white-space: nowrap; }
+/* Kosten nach Kategorie: Prozent im Balken */
+.bar-track { position: relative; height: 22px; }
+.bar-fill { display: flex !important; align-items: center; justify-content: flex-end; }
+.bar-pct { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: .74rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar-pct.in { right: auto; color: var(--navy); }
+.bar-pct.out { color: var(--muted); }
