@@ -5,14 +5,14 @@
   --text: #0f172a;
   --muted: #5a6577;
   --border: #dce2eb;
-  --navy: #0f172a;
+  --navy: #1d2b4a;
   --mint: #2dd4bf;
   --amber: #f59e0b;
-  --primary: #0f172a;
+  --primary: #1d2b4a;
   --primary-ink: #ffffff;
   --accent-text: #0f766e;
-  --hero-bg: #0f172a;
-  --topbar-bg: #0f172a;
+  --hero-bg: #1d2b4a;
+  --topbar-bg: #1d2b4a;
   --danger: #c2410c;
   --danger-bg: #fff0e8;
   --warn: #92400e;
@@ -21,7 +21,7 @@
   --ok-bg: #d5f7f0;
   --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 16px rgba(15, 23, 42, .06);
   --radius: 14px;
-  --account-head-bg: linear-gradient(135deg, #0f172a, #1b2a45);
+  --account-head-bg: linear-gradient(135deg, #1d2b4a, #2b3d63);
   --account-head-muted: #475569;
   --account-body: #e4e9f1;
   --account-edge: #cfd7e3;
@@ -39,8 +39,9 @@
     --primary: #2dd4bf;
     --primary-ink: #0f172a;
     --accent-text: #2dd4bf;
-    --hero-bg: #0b1222;
-    --topbar-bg: #0f172a;
+    --hero-bg: #1a2742;
+    --topbar-bg: #1a2742;
+    --navy: #1a2742;
     --danger: #fb923c;
     --danger-bg: #3a1d10;
     --warn: #fbbf24;
@@ -48,9 +49,9 @@
     --ok: #2dd4bf;
     --ok-bg: #0e2f2d;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
-    --account-head-bg: linear-gradient(135deg, #1c3a4a, #22304b);
+    --account-head-bg: linear-gradient(135deg, #1f3f52, #273656);
     --account-head-muted: #2a3550;
-    --account-body: #0b1222;
+    --account-body: #131c31;
     --account-edge: #27344d;
     color-scheme: dark;
   }
@@ -65,8 +66,9 @@
   --primary: #2dd4bf;
   --primary-ink: #0f172a;
   --accent-text: #2dd4bf;
-  --hero-bg: #0b1222;
-  --topbar-bg: #0f172a;
+  --hero-bg: #1a2742;
+  --topbar-bg: #1a2742;
+  --navy: #1a2742;
   --danger: #fb923c;
   --danger-bg: #3a1d10;
   --warn: #fbbf24;
@@ -74,9 +76,9 @@
   --ok: #2dd4bf;
   --ok-bg: #0e2f2d;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
-  --account-head-bg: linear-gradient(135deg, #1c3a4a, #22304b);
+  --account-head-bg: linear-gradient(135deg, #1f3f52, #273656);
   --account-head-muted: #2a3550;
-  --account-body: #0b1222;
+  --account-body: #131c31;
   --account-edge: #27344d;
   color-scheme: dark;
 }
@@ -108,7 +110,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 /* Großes Logo, ohne die Kopfzeile höher zu machen (ragt über den Innenabstand) */
-.brand-logo { width: 52px; height: 52px; margin: -6px -2px -6px -6px; flex-shrink: 0; }
+.brand-logo { width: 54px; height: 54px; margin: -7px 0 -7px -2px; flex-shrink: 0; }
 .brand { min-width: 0; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
 .brand-name { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
@@ -689,7 +691,7 @@ html.theme-fade, html.theme-fade * { transition: background-color .3s ease, colo
   .topbar { gap: 8px; padding-left: 12px; padding-right: 12px; }
   .top-actions { gap: 6px !important; }
   .top-btn { width: 36px; height: 36px; }
-  .brand-logo { width: 44px; height: 44px; margin: -2px -2px -2px -4px; }
+  .brand-logo { width: 46px; height: 46px; margin: -3px 0 -3px -4px; }
   .brand { gap: 8px; }
   .theme-switch { width: 58px; height: 32px; }
   .theme-knob { width: 26px; height: 26px; }
@@ -704,3 +706,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .tabbar .fab { transition: transform .12s ease, box-shadow .2s ease; }
 .tabbar .fab:active { box-shadow: 0 4px 14px rgba(45, 212, 191, .45), 0 1px 3px rgba(15, 23, 42, .25); }
 .top-btn:active { transform: scale(.94); }
+
+/* Kein Zoomen der Seite (Dokument-Betrachter hat einen eigenen Zoom) */
+html, body { touch-action: pan-x pan-y; }
+button, a, input, select, textarea, label { touch-action: manipulation; }

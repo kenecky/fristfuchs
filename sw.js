@@ -1,5 +1,5 @@
 /* Service Worker: Offline-Betrieb, Updates und Klicks auf Benachrichtigungen */
-const VERSION = '1.24.1';
+const VERSION = '1.25.0';
 const CACHE = `fristfuchs-v${VERSION}`;
 // styles.css und app.js tragen die Version in der Adresse: Seite und Programm passen so immer zusammen
 const ASSETS = [
@@ -9,6 +9,7 @@ const ASSETS = [
   `app.js?v=${VERSION}`,
   'manifest.webmanifest',
   'icons/icon.svg',
+  'icons/logo-mark.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',

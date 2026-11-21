@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.24.1';
+const APP_VERSION = '1.25.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -2252,6 +2252,10 @@ async function refreshApp() {
   location.reload();
 }
 
+// iOS Safari ignoriert user-scalable=no: Zoom-Gesten hier abfangen (nicht im Dokument-Betrachter)
+for (const type of ['gesturestart', 'gesturechange']) {
+  document.addEventListener(type, e => { if (!e.target.closest?.('#dlg-viewer')) e.preventDefault(); }, { passive: false });
+}
 document.addEventListener('touchstart', e => {
   ptr = null;
   if (currentView !== 'dashboard' || e.touches.length !== 1 || $('#view-dashboard').scrollTop > 0 || anyDialogOpen()) return;
