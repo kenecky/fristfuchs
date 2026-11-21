@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -521,19 +521,7 @@ function renderDashboard() {
   $('#by-category').hidden = false;
 }
 
-function renderContracts() {
-  const q = $('#search').value.trim().toLowerCase();
-  const status = $('#filter-status').value;
-  const cat = $('#filter-category').value;
-  const sort = $('#sort').value;
-
-  // Beim Suchen werden alle Verträge durchsucht, unabhängig vom Status-Filter
-  let list = contracts.filter(c =>
-    (q || status === 'all' || c.status === status) &&
-    (!cat || c.category === cat) &&
-    (!q || [c.name, c.provider, c.category, c.account, c.contractNo, c.notes].some(v => String(v || '').toLowerCase().includes(q)))
-  );
-
+function sortContracts(list, sort = 'deadline') {
   const key = c => {
     const s = schedule(c);
     if (s.kind === 'deadline') return s.deadline.getTime();
@@ -546,18 +534,42 @@ function renderContracts() {
     'cost-asc': (a, b) => monthlyCost(a) - monthlyCost(b),
     name: (a, b) => a.name.localeCompare(b.name, 'de'),
   };
-  list.sort(sorters[sort] || sorters.deadline);
+  return list.sort(sorters[sort] || sorters.deadline);
+}
 
-  const hint = $('#search-hint');
-  hint.hidden = !q;
-  // Filter gelten beim Suchen nicht – deshalb ausblenden
-  $('#view-contracts .toolbar').hidden = !!q;
-  if (q) hint.textContent = `${list.length} ${list.length === 1 ? 'Treffer' : 'Treffer'} für „${$('#search').value.trim()}“ in allen Verträgen`;
+// Seite „Verträge“: alle Verträge, nach Status gruppiert, je nach Kündigungsfrist sortiert
+function renderContracts() {
+  if (!contracts.length) { $('#contracts').innerHTML = emptyHTML('Noch keine Verträge erfasst.'); return; }
+  const groups = [['active', 'Aktiv'], ['cancelled', 'Gekündigt'], ['ended', 'Beendet']]
+    .map(([st, label]) => [label, sortContracts(contracts.filter(c => c.status === st))])
+    .filter(([, list]) => list.length);
+  $('#contracts').innerHTML = groups.map(([label, list]) =>
+    `<h2 class="list-group-title">${label} · ${list.length}</h2>${list.map(itemHTML).join('')}`).join('');
+}
 
-  $('#contracts').innerHTML = list.length
+// Suchfenster: Treffer nach Suchbegriff und Filtern
+function renderSearch(force = false) {
+  if (!force && !$('#dlg-search').open) return;
+  const raw = $('#search').value.trim();
+  const q = raw.toLowerCase();
+  const cat = $('#filter-category').value;
+  const acc = $('#filter-account').value;
+  const sort = $('#sort').value;
+  for (const chip of $$('#filter-status [data-status]')) chip.setAttribute('aria-pressed', String(chip.dataset.status === searchStatus));
+
+  const list = sortContracts(contracts.filter(c =>
+    (searchStatus === 'all' || c.status === searchStatus) &&
+    (!cat || c.category === cat) &&
+    (!acc || (c.account || '') === acc) &&
+    (!q || [c.name, c.provider, c.category, c.account, c.contractNo, c.notes].some(v => String(v || '').toLowerCase().includes(q)))
+  ), sort);
+
+  const filtered = raw || searchStatus !== 'all' || cat || acc || sort !== 'deadline';
+  $('#search-reset').hidden = !filtered;
+  $('#search-count').textContent = `${list.length} ${list.length === 1 ? 'Vertrag' : 'Verträge'}${raw ? ` für „${raw}“` : ''}`;
+  $('#search-results').innerHTML = list.length
     ? list.map(itemHTML).join('')
-    : q ? emptyHTML('Kein Vertrag passt zu deiner Suche.', false)
-      : contracts.length ? emptyHTML('Keine Treffer für diese Filter.', false) : emptyHTML('Noch keine Verträge erfasst.');
+    : `<div class="empty">${contracts.length ? 'Kein Vertrag passt zu deiner Suche.' : 'Noch keine Verträge erfasst.'}</div>`;
 }
 
 function renderAccounts() {
@@ -587,15 +599,18 @@ function renderAccounts() {
 
 function refreshFilterOptions() {
   const cats = [...new Set(contracts.map(c => c.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
-  const sel = $('#filter-category');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">Alle Kategorien</option>' + cats.map(c => `<option>${esc(c)}</option>`).join('');
-  sel.value = cats.includes(cur) ? cur : '';
+  const fillSelect = (sel, values) => {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Alle</option>' + values.map(v => `<option>${esc(v)}</option>`).join('');
+    sel.value = values.includes(cur) ? cur : '';
+  };
+  fillSelect($('#filter-category'), cats);
 
   const allCats = [...new Set([...DEFAULT_CATEGORIES, ...cats])];
   $('#dl-categories').innerHTML = allCats.map(c => `<option value="${esc(c)}">`).join('');
-  const accounts = [...new Set(contracts.map(c => c.account).filter(Boolean))];
+  const accounts = [...new Set(contracts.map(c => c.account).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
   $('#dl-accounts').innerHTML = accounts.map(a => `<option value="${esc(a)}">`).join('');
+  fillSelect($('#filter-account'), accounts);
 }
 
 function renderAll() {
@@ -603,6 +618,7 @@ function renderAll() {
   renderDashboard();
   renderContracts();
   renderAccounts();
+  renderSearch();
 }
 
 /* ---------- Navigation ---------- */
@@ -621,30 +637,42 @@ function setActiveTab(name) {
   currentView = name;
   for (const b of $$('.tabbar [data-tab]')) b.classList.toggle('active', b.dataset.tab === name);
   $('#page-title').textContent = PAGE_TITLES[name];
-  // Suche gilt der Vertragsliste – beim Verlassen schließen
-  if (name !== 'contracts' && searchOpen) closeSearch();
   try { sessionStorage.setItem('vw.tab', name); } catch {}
 }
 
-/* Suche in der Kopfzeile */
-let searchOpen = false;
+/* Suchfenster: fährt von unten hoch, auf jeder Seite über die Lupe */
+let searchStatus = 'all';
 function openSearch() {
-  searchOpen = true;
-  $('#topbar').classList.add('searching');
-  $('#search').focus();   // direkt im Tipp aufrufen, sonst öffnet iOS die Tastatur nicht
-  if (currentView !== 'contracts') showView('contracts');
+  const dlg = $('#dlg-search');
+  if (dlg.open) return;
+  renderSearch(true);
+  dlg.showModal();
+  // Fokus direkt im Tipp setzen, sonst öffnet iOS die Tastatur nicht
+  $('#search').focus({ preventScroll: true });
 }
-function closeSearch() {
-  searchOpen = false;
-  $('#topbar').classList.remove('searching');
-  const had = $('#search').value;
-  $('#search').value = '';
-  $('#search').blur();
-  if (had) renderContracts();
+// Bottom-Sheets nach unten hinausgleiten lassen statt hart zu schließen
+function closeSheet(dlg) {
+  if (!dlg.open || dlg.classList.contains('closing')) return;
+  dlg.classList.add('closing');
+  dlg.style.transform = `translateY(${dlg.offsetHeight + 20}px)`;
+  setTimeout(() => { dlg.close(); dlg.style.transform = ''; dlg.classList.remove('closing'); }, 220);
 }
 $('#btn-search').addEventListener('click', openSearch);
-$('#search-close').addEventListener('click', closeSearch);
-$('#search').addEventListener('keydown', e => { if (e.key === 'Escape') closeSearch(); });
+$('#filter-status').addEventListener('click', e => {
+  const chip = e.target.closest('[data-status]');
+  if (!chip) return;
+  searchStatus = chip.dataset.status;
+  renderSearch();
+});
+$('#search-reset').addEventListener('click', () => {
+  $('#search').value = '';
+  searchStatus = 'all';
+  $('#filter-category').value = '';
+  $('#filter-account').value = '';
+  $('#sort').value = 'deadline';
+  renderSearch();
+});
+['#search', '#filter-category', '#filter-account', '#sort'].forEach(sel => $(sel).addEventListener('input', () => renderSearch()));
 
 /* Glocke: zu den anstehenden Fristen auf der Übersicht */
 $('#btn-bell').addEventListener('click', () => {
@@ -1822,6 +1850,7 @@ function enableSwipeToClose(dlg) {
   dlg.addEventListener('touchcancel', end);
 }
 enableSwipeToClose($('#dlg-detail'));
+enableSwipeToClose($('#dlg-search'));
 
 /* ---------- Toast ---------- */
 
@@ -1852,11 +1881,17 @@ document.addEventListener('click', e => {
   if (item) { openDetail(item.dataset.id); return; }
   if (e.target.closest('[data-action="add"]')) openForm();
   const close = e.target.closest('[data-close]');
-  if (close) close.closest('dialog').close();
+  if (close) {
+    const dlg = close.closest('dialog');
+    if (dlg.classList.contains('bottom-sheet')) closeSheet(dlg); else dlg.close();
+  }
 });
 // Klick auf den Hintergrund schließt Dialoge
 for (const dlg of $$('dialog')) {
-  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener('click', e => {
+    if (e.target !== dlg) return;
+    if (dlg.classList.contains('bottom-sheet')) closeSheet(dlg); else dlg.close();
+  });
 }
 
 $('#detail-edit').addEventListener('click', () => openForm(currentId));
@@ -1882,7 +1917,6 @@ $('#detail-ics').addEventListener('click', () => {
   if (s && s.kind === 'deadline') downloadICS([{ c, s }], `kuendigungsfrist-${c.name.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.ics`);
 });
 
-['#search', '#filter-status', '#filter-category', '#sort'].forEach(sel => $(sel).addEventListener('input', renderContracts));
 
 $('#set-warn-days').addEventListener('change', e => {
   settings.warnDays = Math.min(365, Math.max(1, parseInt(e.target.value, 10) || 30));

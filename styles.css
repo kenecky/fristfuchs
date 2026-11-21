@@ -118,20 +118,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   box-shadow: 0 0 0 2px var(--topbar-bg);
 }
 .top-badge.urgent { background: #fb923c; }
-/* Suchmodus: Suchfeld ersetzt Titel und Aktionen – gleiche Höhe, kein Springen */
-.top-search { display: none; flex: 1; align-items: center; gap: 8px; position: relative; min-width: 0; }
-.topbar.searching .brand, .topbar.searching .top-actions { display: none; }
-.topbar.searching .top-search { display: flex; }
-.top-search > svg { position: absolute; left: 12px; width: 18px; height: 18px; color: #94a3b8; pointer-events: none; }
-.top-search input {
-  flex: 1; min-width: 0; min-height: 40px; padding: 8px 12px 8px 38px;
-  border-radius: 12px; border: 1px solid rgba(255, 255, 255, .12);
-  background: rgba(255, 255, 255, .1); color: #fff;
-}
-.top-search input::placeholder { color: rgba(255, 255, 255, .55); }
-.top-search input:focus-visible { outline: 2px solid var(--mint); outline-offset: 0; }
-.search-hint { margin: 0 0 10px; }
-.top-search input::-webkit-search-cancel-button, .top-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 /* Kopfzeile auf breiten Bildschirmen an der Inhaltsbreite ausrichten */
 @media (min-width: 993px) { .topbar { padding-left: calc((100% - 960px) / 2); padding-right: calc((100% - 960px) / 2); } }
 
@@ -233,8 +219,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bar-fill { height: 100%; background: var(--mint); border-radius: 999px; }
 .bar-value { font-variant-numeric: tabular-nums; font-weight: 600; }
 
-/* Toolbar */
-.toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
 input, select, textarea {
   width: 100%; min-height: 42px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
@@ -317,8 +301,6 @@ dialog::backdrop { background: rgba(2, 6, 23, .55); }
 /* Responsiv */
 @media (max-width: 720px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .toolbar { grid-template-columns: 1fr 1fr; }
-  .toolbar select:last-child { grid-column: span 2; }
   .hide-sm { display: none; }
 }
 @media (max-width: 560px) {
@@ -416,8 +398,8 @@ dialog.viewer::backdrop { background: #0b1222; }
 
 /* Vertragsansicht per Wischen schließen */
 .sheet-body, .viewer-body { overscroll-behavior: contain; }
-#dlg-detail { transition: transform .22s ease; }
-#dlg-detail.dragging { transition: none; }
+#dlg-detail, #dlg-search { transition: transform .22s ease; }
+#dlg-detail.dragging, #dlg-search.dragging { transition: none; }
 .grabber { display: none; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto -4px; flex-shrink: 0; }
 @media (pointer: coarse) { .grabber { display: block; } }
 
@@ -483,3 +465,30 @@ dialog.confirm h2 { font-size: 1.15rem; margin-bottom: 8px; }
 .tabbar .fab:hover { box-shadow: 0 10px 28px rgba(45, 212, 191, .6), 0 2px 6px rgba(15, 23, 42, .25); }
 .tabbar .fab:active { transform: translateX(-50%) scale(.93); }
 .tabbar .fab:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+/* Suchfenster: fährt von unten hoch */
+dialog.sheet.bottom-sheet {
+  width: min(680px, 100vw); max-width: 100vw;
+  height: min(88dvh, 820px); max-height: 100dvh;
+  margin: auto auto 0; padding: 0;
+  border: 0; border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, .3);
+}
+dialog.bottom-sheet .grabber { display: block; }
+dialog.bottom-sheet[open] { animation: sheet-up .32s cubic-bezier(.2, .85, .25, 1); }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.search-field { position: relative; margin-bottom: 14px; }
+.search-field svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 19px; height: 19px; color: var(--muted); pointer-events: none; }
+.search-field input { min-height: 48px; padding-left: 42px; border-radius: 14px; font-size: 1.02rem; background: var(--surface-2); border-color: transparent; }
+.search-field input:focus { border-color: var(--accent-text); background: var(--surface); }
+.filter-group { margin-bottom: 12px; }
+.filter-label { display: block; color: var(--muted); font-weight: 600; font-size: .9rem; margin-bottom: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-bottom: 14px; }
+.search-meta { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 10px; color: var(--muted); font-size: .9rem; font-weight: 600; }
+.link-btn { border: 0; background: none; padding: 4px 0; color: var(--accent-text); font-weight: 700; cursor: pointer; }
+/* Vertragsliste nach Status gruppiert */
+.list-group-title { margin: 14px 2px 2px; font-size: .82rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.list-group-title:first-child { margin-top: 0; }
+.filter-grid .span-2 { grid-column: 1 / -1; }

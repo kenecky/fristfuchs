@@ -33,13 +33,6 @@
         <span class="top-badge" id="bell-badge" hidden></span>
       </button>
     </div>
-    <div class="top-search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="search" id="search" placeholder="Verträge durchsuchen …" aria-label="Verträge durchsuchen" enterkeyhint="search" autocomplete="off">
-      <button type="button" class="top-btn" id="search-close" aria-label="Suche schließen" title="Suche schließen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-      </button>
-    </div>
   </header>
 
   <div id="ptr" class="ptr" aria-hidden="true">
@@ -77,24 +70,6 @@
 
     <!-- Verträge -->
     <section class="view" id="view-contracts" data-view="contracts">
-      <p class="hint search-hint" id="search-hint" hidden></p>
-      <div class="toolbar">
-        <select id="filter-status" aria-label="Status filtern">
-          <option value="active">Aktiv</option>
-          <option value="cancelled">Gekündigt</option>
-          <option value="ended">Beendet</option>
-          <option value="all">Alle</option>
-        </select>
-        <select id="filter-category" aria-label="Kategorie filtern">
-          <option value="">Alle Kategorien</option>
-        </select>
-        <select id="sort" aria-label="Sortieren">
-          <option value="deadline">Nach Kündigungsfrist</option>
-          <option value="cost-desc">Teuerste zuerst</option>
-          <option value="cost-asc">Günstigste zuerst</option>
-          <option value="name">Nach Name</option>
-        </select>
-      </div>
       <div id="contracts" class="list"></div>
     </section>
 
@@ -343,6 +318,48 @@
         <button type="button" class="icon-btn" id="viewer-zoom-in" aria-label="Vergrößern">＋</button>
       </div>
       <button type="button" class="btn btn-primary" id="viewer-share">Teilen</button>
+    </div>
+  </dialog>
+
+  <!-- Suche: Fenster fährt von unten hoch, lässt sich nach unten wegwischen -->
+  <dialog id="dlg-search" class="sheet bottom-sheet" aria-labelledby="search-title">
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="search-title">Suchen</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Suche schließen">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="search" placeholder="Name, Anbieter, Konto, Vertragsnr. …" aria-label="Suchbegriff" enterkeyhint="search" autocomplete="off">
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Status</span>
+        <div class="chips" id="filter-status" role="group" aria-label="Status">
+          <button type="button" class="chip" data-status="all" aria-pressed="true">Alle</button>
+          <button type="button" class="chip" data-status="active" aria-pressed="false">Aktiv</button>
+          <button type="button" class="chip" data-status="cancelled" aria-pressed="false">Gekündigt</button>
+          <button type="button" class="chip" data-status="ended" aria-pressed="false">Beendet</button>
+        </div>
+      </div>
+      <div class="filter-grid">
+        <label class="field"><span>Kategorie</span>
+          <select id="filter-category"><option value="">Alle</option></select></label>
+        <label class="field"><span>Konto</span>
+          <select id="filter-account"><option value="">Alle</option></select></label>
+        <label class="field span-2"><span>Sortieren</span>
+          <select id="sort">
+            <option value="deadline">Nach Kündigungsfrist</option>
+            <option value="cost-desc">Teuerste zuerst</option>
+            <option value="cost-asc">Günstigste zuerst</option>
+            <option value="name">Nach Name</option>
+          </select></label>
+      </div>
+      <div class="search-meta">
+        <span id="search-count"></span>
+        <button type="button" class="link-btn" id="search-reset" hidden>Zurücksetzen</button>
+      </div>
+      <div id="search-results" class="list"></div>
     </div>
   </dialog>
 
