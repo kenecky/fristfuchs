@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.31.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1586,7 +1586,7 @@ function openForm(id = null) {
   setLogoProgress(null);
   lastLogoDomain = logoDomain(c);
   updateLogoPreview();
-  $('#form-title').textContent = id ? 'Vertrag bearbeiten' : 'Neuer Vertrag';
+  if (!id) $('#form-title').textContent = 'Neuer Vertrag';
   // Neuer Vertrag bekommt sofort eine ID, damit Dokumente schon vorher angehängt werden können
   currentId = id || uid();
   formIsNew = !id;
@@ -1700,6 +1700,11 @@ function readForm() {
 
 /* Logo-Auswahl im Formular */
 let logoPreviewTimer;
+// Beim Bearbeiten steht oben Logo und Name des Vertrags statt „Vertrag bearbeiten“
+function updateFormTitle(data, loading = false) {
+  if (!editingId) return;
+  $('#form-title').innerHTML = `${avatar(loading ? { ...data, logoMode: 'none' } : data, 'title-avatar')}<span class="form-title-name">${esc(form.elements.name.value.trim() || 'Ohne Namen')}</span>`;
+}
 function updateLogoPreview() {
   const data = { name: form.elements.name.value.trim() || '?', provider: form.elements.provider.value, website: form.elements.website.value,
     logoMode: form.elements.logoMode.value || 'auto', logo: form.elements.logo.value };
@@ -1707,9 +1712,11 @@ function updateLogoPreview() {
   if (logoLoading) {
     // Während der Suche: pulsierender Anfangsbuchstabe, Suchtext bleibt stehen
     $('#form-logo-preview').innerHTML = avatar({ ...data, logoMode: 'none' }, 'pulse');
+    updateFormTitle(data, true);
     return;
   }
   $('#form-logo-preview').innerHTML = avatar(data);
+  updateFormTitle(data);
   const domain = logoDomain(data);
   let hint;
   if (data.logoMode === 'custom') hint = 'Eigenes Bild. Tippe erneut auf „Eigenes Bild …“, um es zu ersetzen.';

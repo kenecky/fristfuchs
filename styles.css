@@ -791,3 +791,9 @@ button.bar-row {
 button.bar-row:hover, button.bar-row:active { background: var(--surface-2); }
 button.bar-row:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 .bar-fill { display: block; }
+
+/* Titel im Vertragsfenster: Logo + Name */
+#form-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#form-title .avatar.title-avatar { width: 34px; height: 34px; font-size: .95rem; border-radius: 10px; flex-shrink: 0; }
+#form-title .form-title-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dlg-form .sheet-head { min-width: 0; }
