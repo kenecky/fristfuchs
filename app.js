@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -787,11 +787,17 @@ function openSearch() {
   $('#search').focus({ preventScroll: true });
 }
 // Bottom-Sheets nach unten hinausgleiten lassen statt hart zu schließen
-function closeSheet(dlg) {
+// force: ohne Rückfrage (z. B. nach dem Speichern)
+async function closeSheet(dlg, force = false) {
   if (!dlg.open || dlg.classList.contains('closing')) return;
+  if (!force && dlg.guardClose && !(await dlg.guardClose())) { dlg.style.transform = ''; return; }
   dlg.classList.add('closing');
   dlg.style.transform = `translateY(${dlg.offsetHeight + 20}px)`;
   setTimeout(() => { dlg.close(); dlg.style.transform = ''; dlg.classList.remove('closing'); }, 220);
+}
+// Esc bei Fenstern von unten: ebenfalls über closeSheet (Animation und ggf. Rückfrage)
+for (const sheet of document.querySelectorAll('dialog.bottom-sheet')) {
+  sheet.addEventListener('cancel', e => { e.preventDefault(); closeSheet(sheet); });
 }
 $('#btn-search').addEventListener('click', openSearch);
 $('#filter-status').addEventListener('click', e => {
@@ -1458,9 +1464,23 @@ function openForm(id = null) {
   updateLogoPreview();
   $('#form-title').textContent = id ? 'Vertrag bearbeiten' : 'Neuer Vertrag';
   updateFormState();
+  formDirty = false;
   $('#dlg-form').showModal();
   if (!id) form.elements.name.focus();
 }
+
+/* Ungespeicherte Eingaben schützen: Rückfrage vor dem Schließen */
+let formDirty = false;
+form.addEventListener('input', () => { formDirty = true; });
+form.addEventListener('change', e => { if (e.isTrusted) formDirty = true; });
+$('#dlg-form').guardClose = async () => {
+  if (!formDirty) return true;
+  return (await ask({
+    title: 'Änderungen verwerfen?',
+    message: editingId ? 'Deine Änderungen an diesem Vertrag werden nicht gespeichert.' : 'Der neue Vertrag wird nicht gespeichert.',
+    buttons: [{ label: 'Verwerfen', value: true, kind: 'danger' }, { label: 'Weiter bearbeiten', value: false }],
+  })) === true;
+};
 
 function readForm() {
   const data = {};
@@ -1587,6 +1607,7 @@ form.addEventListener('click', e => {
   if (!btn) return;
   const mode = btn.dataset.logoMode;
   if (mode === 'custom') { $('#logo-file').click(); return; }
+  formDirty = true;
   logoRun++;
   setLogoProgress(null);
   form.elements.logoMode.value = mode;
@@ -1602,6 +1623,7 @@ $('#logo-file').addEventListener('change', async e => {
     setLogoProgress(null);
     form.elements.logo.value = await prepareLogo(file);
     form.elements.logoMode.value = 'custom';
+    formDirty = true;
     updateLogoPreview();
   } catch {
     toast('Dieses Bild kann nicht gelesen werden. Bitte JPG oder PNG verwenden.');
@@ -1642,7 +1664,7 @@ form.addEventListener('submit', e => {
   }
   persist();
   renderAll();
-  $('#dlg-form').close();
+  closeSheet($('#dlg-form'), true);
   if (editingId && $('#dlg-detail').open) openDetail(editingId);
   toast(editingId ? 'Änderungen gespeichert' : 'Vertrag angelegt');
 });
@@ -1745,6 +1767,7 @@ accForm.addEventListener('submit', e => {
   $('#dlg-account').close();
   renderAll();
   if (accountForContract && $('#dlg-form').open) {
+    formDirty = true;
     fillAccountSelect(acc.id);
     form.elements.accountId.dispatchEvent(new Event('change'));
   }
@@ -2114,6 +2137,7 @@ function enableSwipeToClose(dlg) {
     if (!active) return;
     const velocity = dy / Math.max(1, performance.now() - t0);
     if (dy > 120 || (dy > 40 && velocity > 0.5)) {
+      if (dlg.guardClose) { closeSheet(dlg); return; }   // fragt ggf. nach, sonst gleitet es hinaus
       dlg.style.transform = `translateY(${window.innerHeight}px)`;
       setTimeout(() => { dlg.close(); dlg.style.transform = ''; }, 200);
     } else {
@@ -2124,6 +2148,7 @@ function enableSwipeToClose(dlg) {
   dlg.addEventListener('touchcancel', end);
 }
 enableSwipeToClose($('#dlg-detail'));
+enableSwipeToClose($('#dlg-form'));
 enableSwipeToClose($('#dlg-search'));
 
 /* ---------- Toast ---------- */

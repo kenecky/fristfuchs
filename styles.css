@@ -400,8 +400,8 @@ dialog.viewer::backdrop { background: #0b1222; }
 
 /* Vertragsansicht per Wischen schließen */
 .sheet-body, .viewer-body { overscroll-behavior: contain; }
-#dlg-detail, #dlg-search { transition: transform .22s ease; }
-#dlg-detail.dragging, #dlg-search.dragging { transition: none; }
+#dlg-detail, #dlg-search, #dlg-form { transition: transform .22s ease; }
+#dlg-detail.dragging, #dlg-search.dragging, #dlg-form.dragging { transition: none; }
 .grabber { display: none; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto -4px; flex-shrink: 0; }
 @media (pointer: coarse) { .grabber { display: block; } }
 
