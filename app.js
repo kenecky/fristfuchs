@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.24.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -2155,10 +2155,28 @@ async function updateStorageInfo() {
 
 /* ---------- Theme ---------- */
 
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => settings.theme === 'dark' || (settings.theme !== 'light' && darkQuery.matches);
 function applyTheme() {
   if (settings.theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = settings.theme;
+  const sw = $('#btn-theme');
+  if (sw) {
+    sw.setAttribute('aria-checked', String(isDark()));
+    sw.setAttribute('aria-label', isDark() ? 'Dunkelmodus ausschalten' : 'Dunkelmodus einschalten');
+  }
 }
+// Schalter in der Kopfzeile: wechselt zwischen Hell und Dunkel
+$('#btn-theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  root.classList.add('theme-fade');
+  settings.theme = isDark() ? 'light' : 'dark';
+  saveSettings();
+  applyTheme();
+  setTimeout(() => root.classList.remove('theme-fade'), 350);
+});
+// Solange nichts gewählt ist, folgt die App dem Handy
+darkQuery.addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
 /* ---------- Sicherheitsabfrage ---------- */
 
@@ -2391,7 +2409,6 @@ $('#set-warn-days').addEventListener('change', e => {
   saveSettings();
   renderAll();
 });
-$('#set-theme').addEventListener('change', e => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
 $('#set-auto-logos').addEventListener('change', e => {
   settings.autoLogos = e.target.checked;
   saveSettings();
@@ -2457,7 +2474,6 @@ $('#btn-clear').addEventListener('click', async () => {
 
 applyTheme();
 $('#set-warn-days').value = settings.warnDays;
-$('#set-theme').value = settings.theme;
 $('#set-auto-logos').checked = settings.autoLogos;
 $('#app-version').textContent = APP_VERSION;
 updateNotifyState();
