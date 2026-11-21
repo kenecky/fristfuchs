@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -591,15 +591,61 @@ function renderAll() {
 
 /* ---------- Navigation ---------- */
 
+/* Seiten-Navigation: waagerecht wischen oder Tab antippen */
+const VIEWS = ['dashboard', 'contracts', 'accounts', 'settings'];
+const pager = $('#main');
 let currentView = 'dashboard';
-function showView(name) {
+let navTarget = null;      // Ziel eines angetippten Tabs, solange dorthin geglitten wird
+let navTimer;
+
+function setActiveTab(name) {
+  if (name === currentView && $('.tabbar [data-tab].active')?.dataset.tab === name) return;
   currentView = name;
-  for (const v of $$('.view')) v.hidden = v.dataset.view !== name;
   for (const b of $$('.tabbar [data-tab]')) b.classList.toggle('active', b.dataset.tab === name);
   try { sessionStorage.setItem('vw.tab', name); } catch {}
-  window.scrollTo({ top: 0 });
+}
+function viewIndexFromScroll() {
+  const i = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
+  return Math.max(0, Math.min(VIEWS.length - 1, i));
+}
+function showView(name, smooth = true) {
+  const i = VIEWS.indexOf(name);
+  if (i < 0) return;
+  const left = i * pager.clientWidth;
+  // Erneuter Tipp auf den aktiven Tab: nach oben scrollen
+  if (name === currentView && Math.abs(pager.scrollLeft - left) < 2) {
+    $(`#view-${name}`).scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+    return;
+  }
+  setActiveTab(name);
+  if (!smooth) { pager.scrollLeft = left; return; }
+  navTarget = name;
+  clearTimeout(navTimer);
+  navTimer = setTimeout(() => { navTarget = null; }, 800);
+  pager.scrollTo({ left, behavior: 'smooth' });
 }
 $$('.tabbar [data-tab]').forEach(b => b.addEventListener('click', () => showView(b.dataset.tab)));
+
+// Aktiven Tab beim Wischen mitführen (max. einmal pro Bild, damit nichts ruckelt)
+let pagerFrame = 0;
+pager.addEventListener('scroll', () => {
+  if (pagerFrame) return;
+  pagerFrame = requestAnimationFrame(() => {
+    pagerFrame = 0;
+    if (navTarget) return;
+    setActiveTab(VIEWS[viewIndexFromScroll()]);
+  });
+}, { passive: true });
+pager.addEventListener('scrollend', () => {
+  navTarget = null;
+  setActiveTab(VIEWS[viewIndexFromScroll()]);
+});
+// Bei Größenänderung (z. B. Drehen) auf der aktuellen Seite bleiben
+let pagerResizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(pagerResizeTimer);
+  pagerResizeTimer = setTimeout(() => { pager.scrollLeft = VIEWS.indexOf(currentView) * pager.clientWidth; }, 100);
+});
 
 /* ---------- Detailansicht ---------- */
 
@@ -1648,7 +1694,7 @@ async function refreshApp() {
 
 document.addEventListener('touchstart', e => {
   ptr = null;
-  if (currentView !== 'dashboard' || e.touches.length !== 1 || window.scrollY > 0 || anyDialogOpen()) return;
+  if (currentView !== 'dashboard' || e.touches.length !== 1 || $('#view-dashboard').scrollTop > 0 || anyDialogOpen()) return;
   const t = e.touches[0];
   if (t.clientY > window.innerHeight / 3) return;
   ptr = { x0: t.clientX, y0: t.clientY, dist: 0, active: false };
@@ -1860,7 +1906,7 @@ updateStorageInfo();
 const params = new URLSearchParams(location.search);
 let startTab = 'dashboard';
 try { startTab = sessionStorage.getItem('vw.tab') || startTab; } catch {}
-showView(params.get('view') || startTab);
+showView(params.get('view') || startTab, false);
 if (params.get('action') === 'add') openForm();
 if (params.get('id')) openDetail(params.get('id'));
 

@@ -27,7 +27,7 @@
     <svg viewBox="0 0 48 48"><circle class="ptr-ring" cx="24" cy="24" r="14" pathLength="100"/><circle class="ptr-dot" cx="24" cy="10" r="4"/></svg>
   </div>
 
-  <main id="main">
+  <main id="main" class="pager">
     <!-- Übersicht -->
     <section class="view" id="view-dashboard" data-view="dashboard">
       <div class="stats">
@@ -57,7 +57,7 @@
     </section>
 
     <!-- Verträge -->
-    <section class="view" id="view-contracts" data-view="contracts" hidden>
+    <section class="view" id="view-contracts" data-view="contracts">
       <div class="toolbar">
         <input type="search" id="search" placeholder="Suchen (Name, Anbieter, Konto …)" aria-label="Suchen">
         <select id="filter-status" aria-label="Status filtern">
@@ -80,13 +80,13 @@
     </section>
 
     <!-- Konten -->
-    <section class="view" id="view-accounts" data-view="accounts" hidden>
+    <section class="view" id="view-accounts" data-view="accounts">
       <p class="hint">Welche Summe wird monatlich von welchem Konto abgebucht?</p>
       <div id="accounts" class="list"></div>
     </section>
 
     <!-- Einstellungen -->
-    <section class="view" id="view-settings" data-view="settings" hidden>
+    <section class="view" id="view-settings" data-view="settings">
       <div class="card settings">
         <h2>Erinnerungen</h2>
         <label class="field">

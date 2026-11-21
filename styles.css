@@ -78,7 +78,9 @@ body {
   color: var(--text);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  /* Feste Bildschirmhöhe: gescrollt wird in den einzelnen Seiten */
+  height: 100vh; height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
 }
 [hidden] { display: none !important; }
 h1, h2, h3 { margin: 0; line-height: 1.2; }
@@ -86,7 +88,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Kopfzeile */
 .topbar {
-  position: sticky; top: 0; z-index: 10;
+  position: relative; z-index: 10; flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   background: var(--topbar-bg); color: #fff;
@@ -95,7 +97,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand h1 { font-size: 1.15rem; font-weight: 700; }
 
-main { max-width: 960px; margin: 0 auto; padding: 16px; }
+/* Seiten nebeneinander – waagerecht wischen, der Browser rastet nativ ein (flüssig, mit Schwung) */
+.pager {
+  flex: 1; min-height: 0; display: flex;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.pager::-webkit-scrollbar { display: none; }
+.view {
+  flex: 0 0 100%; width: 100%; min-width: 0;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  /* Inhalt mittig, max. 960 px breit; unten Platz für die Navigation */
+  padding: 16px max(16px, calc((100% - 960px) / 2)) calc(100px + env(safe-area-inset-bottom));
+}
 
 /* Buttons */
 .btn {
