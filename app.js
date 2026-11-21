@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.27.0';
+const APP_VERSION = '1.28.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -236,26 +236,45 @@ function renewalStart(c) {
   const first = Number(c.minTermMonths) || Number(c.renewalMonths) || 0;
   return start && first ? addMonths(start, first) : null;
 }
-function priceTimeline(c) {
-  const list = [{ from: parseISO(c.startDate) || new Date(0), amount: Number(c.amount) || 0, kind: 'base' }];
-  for (const p of c.priceSteps || []) {
-    const d = parseISO(p.from);
-    if (d && hasNum(p.amount)) list.push({ from: d, amount: Number(p.amount), kind: 'step' });
-  }
-  const r = renewalStart(c);
-  if (r && hasNum(c.renewalAmount)) list.push({ from: r, amount: Number(c.renewalAmount), kind: 'renewal' });
-  return list.sort((a, b) => a.from - b.from);
+/**
+ * Preise mit Zeitraum: [{ from, to, amount }] – „from“ leer = ab Vertragsbeginn, „to“ leer = läuft noch.
+ * Ausdrücklich begrenzte Zeiträume haben Vorrang; der Preis nach Verlängerung ersetzt einen
+ * noch laufenden Preis, der vor der Verlängerung begonnen hat.
+ */
+function pricePeriods(c) {
+  if (Array.isArray(c.prices) && c.prices.length) return c.prices;
+  return [{ from: '', to: '', amount: Number(c.amount) || 0 }];
 }
 function priceAt(c, d = today()) {
-  const list = priceTimeline(c);
-  let cur = list.find(e => e.kind === 'base');
-  for (const e of list) if (e.from <= d) cur = e;
-  return cur;
+  const periods = pricePeriods(c).filter(p => hasNum(p.amount))
+    .map(p => ({ from: parseISO(p.from), to: parseISO(p.to), amount: Number(p.amount) }));
+  if (!periods.length) return { amount: Number(c.amount) || 0, kind: 'base' };
+  const hit = periods.filter(p => (!p.from || p.from <= d) && (!p.to || p.to >= d))
+    .sort((x, y) => (x.from || 0) - (y.from || 0)).pop();
+  const r = renewalStart(c);
+  const renewal = r && r <= d && hasNum(c.renewalAmount);
+  if (renewal && (!hit || (!hit.to && (!hit.from || hit.from < r)))) return { amount: Number(c.renewalAmount), kind: 'renewal', from: r };
+  if (hit) return { ...hit, kind: 'period' };
+  // Kein Zeitraum passt: zuletzt gültiger Preis, sonst der früheste
+  const past = periods.filter(p => p.to && p.to < d).sort((x, y) => x.to - y.to).pop();
+  return { ...(past || periods.sort((x, y) => (x.from || 0) - (y.from || 0))[0]), kind: 'period' };
 }
 const currentAmount = c => priceAt(c).amount;
 function nextPriceChange(c, d = today()) {
   const cur = currentAmount(c);
-  return priceTimeline(c).find(e => e.from > d && e.amount !== cur) || null;
+  const dates = [];
+  for (const p of pricePeriods(c)) {
+    const f = parseISO(p.from), t = parseISO(p.to);
+    if (f && f > d) dates.push(f);
+    if (t && t >= d) dates.push(addDays(t, 1));
+  }
+  const r = renewalStart(c);
+  if (r && r > d && hasNum(c.renewalAmount)) dates.push(r);
+  for (const x of dates.sort((a, b) => a - b)) {
+    const at = priceAt(c, x);
+    if (at.amount !== cur) return { from: x, amount: at.amount, kind: at.kind };
+  }
+  return null;
 }
 
 function monthlyCost(c) {
@@ -334,6 +353,14 @@ function normalizeCancellations() {
   for (const c of contracts) {
     // Früher gab es nur ein Feld „Vertrags-/Kundennummer“ – das wird zur Kundennummer
     if (c.customerNo === undefined) { c.customerNo = c.contractNo || ''; c.contractNo = ''; changed = true; }
+    // Preise in Zeiträume umwandeln (früher: ein Betrag plus „Preis ab Datum“)
+    if (!Array.isArray(c.prices)) {
+      const steps = (c.priceSteps || []).filter(p => p.from).sort((a, b) => a.from.localeCompare(b.from));
+      const list = [{ from: '', amount: Number(c.amount) || 0 }, ...steps.map(p => ({ from: p.from, amount: Number(p.amount) || 0 }))];
+      c.prices = list.map((p, i) => ({ from: p.from, to: list[i + 1] ? toISO(addDays(parseISO(list[i + 1].from), -1)) : '', amount: p.amount }));
+      delete c.priceSteps;
+      changed = true;
+    }
     if ((c.status === 'cancelled' || c.status === 'ended') && c.cancelConfirmedAt === undefined) {
       c.cancelConfirmedAt = c.cancelledAt || ''; changed = true;
     }
@@ -1494,7 +1521,7 @@ window.addEventListener('resize', () => {
 /* ---------- Formular ---------- */
 
 const form = $('#contract-form');
-const FIELDS = ['name', 'provider', 'category', 'status', 'customerNo', 'contractNo', 'amount', 'renewalAmount', 'interval', 'accountId', 'paymentMethod',
+const FIELDS = ['name', 'provider', 'category', 'status', 'customerNo', 'contractNo', 'renewalAmount', 'interval', 'accountId', 'paymentMethod',
   'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate', 'website', 'cancelContact', 'notes',
   'logoMode', 'logo'];
 let editingId = null;
@@ -1508,8 +1535,8 @@ function openForm(id = null) {
   fillAccountSelect();
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
   if (!form.elements.status.value) form.elements.status.value = 'active';
-  $('#price-steps').innerHTML = '';
-  for (const p of c.priceSteps || []) addPriceStep(p);
+  $('#price-rows').innerHTML = '';
+  for (const p of id ? pricePeriods(c) : [{}]) addPriceRow(p);
   endDateAuto = false;
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
@@ -1594,14 +1621,15 @@ function readForm() {
   const data = {};
   for (const f of FIELDS) data[f] = form.elements[f].value.trim();
   const money = v => Math.round(parseFloat(String(v).replace(',', '.')) * 100) / 100;
-  data.amount = data.amount === '' ? 0 : money(data.amount);
   data.renewalAmount = data.renewalAmount === '' ? '' : money(data.renewalAmount);
-  data.priceSteps = $$('#price-steps .price-step')
-    .map(row => ({ from: row.querySelector('.ps-from').value, amount: row.querySelector('.ps-amount').value.trim() }))
-    .filter(p => p.from && p.amount !== '')
-    .map(p => ({ from: p.from, amount: money(p.amount) }))
+  data.prices = $$('#price-rows .price-row')
+    .map(row => ({ from: row.querySelector('.pr-from').value, to: row.querySelector('.pr-to').value, amount: row.querySelector('.pr-amount').value.trim() }))
+    .filter(p => p.amount !== '')
+    .map(p => ({ from: p.from, to: p.to, amount: money(p.amount) }))
     .filter(p => Number.isFinite(p.amount))
-    .sort((a, b) => a.from.localeCompare(b.from));
+    .sort((a, b) => (a.from || '').localeCompare(b.from || ''));
+  // „amount“ bleibt der aktuell gültige Preis (für Export und ältere Versionen)
+  data.amount = data.prices.length ? currentAmount(data) : NaN;
   for (const n of ['minTermMonths', 'renewalMonths', 'noticeValue']) data[n] = data[n] === '' ? '' : Math.max(0, parseInt(data[n], 10) || 0);
   if (data.status === 'active') { data.cancelledAt = ''; data.cancelMethod = ''; data.cancelConfirmedAt = ''; data.endDate = ''; }
   else {
@@ -1751,39 +1779,53 @@ $('#logo-file').addEventListener('change', async e => {
   }
 });
 
-/* Weitere Preise ab Datum */
-function addPriceStep(p = {}) {
+/* Preise mit Zeitraum */
+function addPriceRow(p = {}) {
   const row = document.createElement('div');
-  row.className = 'price-step';
-  row.innerHTML = `<span class="ps-label">ab</span>
-    <input type="date" class="ps-from" aria-label="Gilt ab" value="${esc(p.from || '')}">
-    <input type="number" class="ps-amount" step="0.01" min="0" inputmode="decimal" placeholder="Betrag €" aria-label="Betrag" value="${hasNum(p.amount) ? esc(String(p.amount)) : ''}">
-    <button type="button" class="icon-btn ps-del" aria-label="Preis entfernen">✕</button>`;
-  $('#price-steps').appendChild(row);
+  row.className = 'price-row';
+  row.innerHTML = `<span class="pr-badge" hidden>aktuell</span>
+    <label>von<input type="date" class="pr-from" value="${esc(p.from || '')}"></label>
+    <label>bis<input type="date" class="pr-to" value="${esc(p.to || '')}"></label>
+    <label class="pr-amount-wrap">Betrag €<input type="number" class="pr-amount" step="0.01" min="0" inputmode="decimal" placeholder="0,00" value="${hasNum(p.amount) ? esc(String(p.amount)) : ''}"></label>
+    <button type="button" class="icon-btn pr-del" aria-label="Zeitraum entfernen">✕</button>`;
+  $('#price-rows').appendChild(row);
   return row;
 }
 $('#price-add').addEventListener('click', () => {
-  const row = addPriceStep();
+  // Neuer Zeitraum beginnt am Tag nach dem Ende des letzten
+  const rows = $$('#price-rows .price-row');
+  const lastTo = parseISO(rows.at(-1)?.querySelector('.pr-to').value);
+  const row = addPriceRow({ from: lastTo ? toISO(addDays(lastTo, 1)) : '' });
   formDirty = true;
-  row.querySelector('.ps-from').focus();
+  updateFormState();
+  row.querySelector(lastTo ? '.pr-amount' : '.pr-from').focus();
 });
-$('#price-steps').addEventListener('click', e => {
-  const del = e.target.closest('.ps-del');
+$('#price-rows').addEventListener('click', e => {
+  const del = e.target.closest('.pr-del');
   if (!del) return;
-  del.closest('.price-step').remove();
+  del.closest('.price-row').remove();
+  if (!$('#price-rows .price-row')) addPriceRow();
   formDirty = true;
   updateFormState();
 });
 function updatePriceInfo(d) {
   const r = renewalStart(d);
   $('#renewal-hint').textContent = r
-    ? `Gilt ab ${fmtDate(r)}, wenn sich der Vertrag nach ${Number(d.minTermMonths) ? 'der Mindestlaufzeit' : 'der ersten Laufzeit'} automatisch verlängert.`
+    ? `Gilt ab ${fmtDate(r)}, wenn sich der Vertrag nach ${Number(d.minTermMonths) ? 'der Mindestlaufzeit' : 'der ersten Laufzeit'} automatisch verlängert – außer für Zeiträume, die du oben mit „bis“ festgelegt hast.`
     : 'Trag unter „Laufzeit & Kündigung“ Vertragsbeginn und Laufzeit ein, dann wird das Datum berechnet.';
-  const timeline = priceTimeline(d);
-  if (timeline.length < 2) { $('#price-now').innerHTML = ''; return; }
-  const cur = priceAt(d);
+  // Zeitraum markieren, der heute gilt
+  const cur = d.prices?.length ? priceAt(d) : null;
+  const t = today();
+  for (const row of $$('#price-rows .price-row')) {
+    const f = parseISO(row.querySelector('.pr-from').value), to = parseISO(row.querySelector('.pr-to').value);
+    const amount = row.querySelector('.pr-amount').value;
+    const isCur = !!cur && cur.kind === 'period' && amount !== '' && (!f || f <= t) && (!to || to >= t);
+    row.classList.toggle('current', isCur);
+    row.querySelector('.pr-badge').hidden = !isCur;
+  }
+  if (!cur) { $('#price-now').innerHTML = ''; return; }
   const next = nextPriceChange(d);
-  $('#price-now').innerHTML = `Aktuell gültig: <strong>${eur.format(cur.amount)}</strong>`
+  $('#price-now').innerHTML = `Aktuell gültig: <strong>${eur.format(cur.amount)}</strong>${cur.kind === 'renewal' ? ' (nach Verlängerung)' : ''}`
     + (next ? ` · ab ${fmtDate(next.from)}: <strong>${eur.format(next.amount)}</strong>${next.kind === 'renewal' ? ' (nach Verlängerung)' : ''}` : '');
 }
 
@@ -1900,7 +1942,9 @@ form.addEventListener('submit', e => {
   e.preventDefault();
   const data = readForm();
   if (!data.name) { toast('Bitte einen Namen eingeben.'); focusFormField(form.elements.name); return; }
-  if (!Number.isFinite(data.amount)) { toast('Bitte einen gültigen Betrag eingeben.'); focusFormField(form.elements.amount); return; }
+  if (!Number.isFinite(data.amount)) { toast('Bitte einen Betrag eingeben.'); focusFormField($('#price-rows .pr-amount') || $('#price-add')); return; }
+  const bad = data.prices.find(p => p.from && p.to && p.to < p.from);
+  if (bad) { toast('Bei einem Zeitraum liegt „bis“ vor „von“.'); focusFormField($('#price-rows .pr-to')); return; }
   const now = new Date().toISOString();
   if (editingId) {
     const idx = contracts.findIndex(x => x.id === editingId);
@@ -2118,8 +2162,8 @@ async function exportJSON() {
 
 function exportCSV() {
   const cols = [['Name', 'name'], ['Anbieter', 'provider'], ['Kategorie', 'category'], ['Status', c => STATUS[c.status]],
-    ['Betrag', c => String(c.amount).replace('.', ',')], ['Betrag aktuell', c => String(currentAmount(c)).replace('.', ',')],
-    ['Weitere Preise', c => (c.priceSteps || []).map(p => `ab ${fmtISO(p.from)}: ${String(p.amount).replace('.', ',')}`).join('; ')],
+    ['Betrag aktuell', c => String(currentAmount(c)).replace('.', ',')],
+    ['Preise', c => pricePeriods(c).map(p => `${p.from ? fmtISO(p.from) : 'Beginn'}–${p.to ? fmtISO(p.to) : 'laufend'}: ${String(p.amount).replace('.', ',')}`).join('; ')],
     ['Preis nach Verlängerung', c => hasNum(c.renewalAmount) ? String(c.renewalAmount).replace('.', ',') : ''],
     ['Intervall', c => (INTERVALS[c.interval] || {}).label],
     ['Monatlich', c => monthlyCost(c).toFixed(2).replace('.', ',')], ['Konto', 'account'], ['IBAN', c => formatIban(accountById(c.accountId)?.iban || '')], ['Zahlungsart', 'paymentMethod'],
