@@ -625,3 +625,35 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 }
 .rescue span { color: rgba(255, 255, 255, .75); }
 .rescue button { min-height: 46px; border: 0; border-radius: 12px; background: #2dd4bf; color: #0f172a; font: 700 1rem system-ui, sans-serif; cursor: pointer; }
+
+/* Vertrag bearbeiten: Reiter oben, Bereiche seitlich wischbar */
+.sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.form-tabs {
+  display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
+  border-bottom: 1px solid var(--border); scroll-behavior: smooth;
+}
+.form-tabs::-webkit-scrollbar { display: none; }
+.form-tabs [role=tab] {
+  position: relative; flex-shrink: 0; padding: 12px 10px 13px; border: 0; background: none; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: .92rem; font-weight: 650; white-space: nowrap;
+}
+.form-tabs [role=tab]::after {
+  content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0;
+  background: var(--mint); transform: scaleX(0); transition: transform .2s ease;
+}
+.form-tabs [role=tab][aria-selected=true] { color: var(--text); }
+.form-tabs [role=tab][aria-selected=true]::after { transform: scaleX(1); }
+.form-tabs [role=tab]:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -4px; border-radius: 8px; }
+.form-tabs .count:empty { display: none; }
+.form-tabs .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: .75rem; }
+.form-pager {
+  display: flex; padding: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory; scrollbar-width: none;
+}
+.form-pager::-webkit-scrollbar { display: none; }
+.form-pane {
+  flex: 0 0 100%; min-width: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 16px;
+  scroll-snap-align: start; scroll-snap-stop: always;
+}
+dialog.bottom-sheet .form-pane { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.form-pane fieldset { margin-bottom: 0; }

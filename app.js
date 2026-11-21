@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.21.1';
+const APP_VERSION = '1.22.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1081,7 +1081,7 @@ async function renderDocs(contractId) {
   catch { list.innerHTML = '<p class="hint">Dokumente können in diesem Browser nicht gespeichert werden.</p>'; return; }
   if (currentId !== contractId) return;
   docs.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  $('#doc-count').textContent = docs.length ? `(${docs.length})` : '';
+  $('#doc-count').textContent = docs.length ? String(docs.length) : '';
   list.innerHTML = docs.length
     ? docs.map(d => `
       <div class="doc" data-doc="${esc(d.id)}">
@@ -1464,12 +1464,42 @@ function openForm(id = null) {
   updateFormState();
   formDirty = false;
   $('#dlg-form').showModal();
-  $('#dlg-form .sheet-body').scrollTop = 0;
+  for (const pane of $$('.form-pane')) pane.scrollTop = 0;
+  setFormTab(0, false);
   renderDocs(currentId);
   if (!id) form.elements.name.focus();
 }
 let formIsNew = false;
 let formSaved = false;
+
+/* Reiter im Vertragsfenster: antippen oder seitlich wischen */
+const formPager = $('#form-pager');
+const formTabs = $$('#form-tabs [role=tab]');
+let formTab = 0;
+function markFormTab(i) {
+  formTab = i;
+  formTabs.forEach((t, k) => t.setAttribute('aria-selected', String(k === i)));
+  // Aktiven Reiter in der Leiste sichtbar halten
+  const bar = $('#form-tabs'), tab = formTabs[i];
+  const left = tab.offsetLeft - (bar.clientWidth - tab.offsetWidth) / 2;
+  bar.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+}
+function setFormTab(i, smooth = true) {
+  formPager.scrollTo({ left: i * formPager.clientWidth, behavior: smooth ? 'smooth' : 'instant' });
+  markFormTab(i);
+}
+formTabs.forEach((t, i) => t.addEventListener('click', () => setFormTab(i)));
+formPager.addEventListener('scroll', () => {
+  const i = Math.round(formPager.scrollLeft / Math.max(1, formPager.clientWidth));
+  if (i !== formTab && formTabs[i]) markFormTab(i);
+}, { passive: true });
+// Fenstergröße ändert sich (z. B. Drehen): beim aktuellen Reiter bleiben
+window.addEventListener('resize', () => { if ($('#dlg-form').open) formPager.scrollLeft = formTab * formPager.clientWidth; });
+function focusFormField(el) {
+  const pane = el.closest('.form-pane');
+  if (pane) setFormTab(Number(pane.dataset.pane), false);
+  el.focus();
+}
 // Neuer Vertrag verworfen → bereits angehängte Dokumente wieder entfernen
 $('#dlg-form').addEventListener('close', async () => {
   if (!formIsNew || formSaved) return;
@@ -1757,8 +1787,8 @@ form.addEventListener('change', updateFormState);
 form.addEventListener('submit', e => {
   e.preventDefault();
   const data = readForm();
-  if (!data.name) { toast('Bitte einen Namen eingeben.'); form.elements.name.focus(); return; }
-  if (!Number.isFinite(data.amount)) { toast('Bitte einen gültigen Betrag eingeben.'); form.elements.amount.focus(); return; }
+  if (!data.name) { toast('Bitte einen Namen eingeben.'); focusFormField(form.elements.name); return; }
+  if (!Number.isFinite(data.amount)) { toast('Bitte einen gültigen Betrag eingeben.'); focusFormField(form.elements.amount); return; }
   const now = new Date().toISOString();
   if (editingId) {
     const idx = contracts.findIndex(x => x.id === editingId);
@@ -2230,7 +2260,7 @@ function enableSwipeToClose(dlg) {
   dlg.addEventListener('touchstart', e => {
     s = null;
     if (e.touches.length !== 1 || e.target.closest('.sheet-foot')) return;
-    const body = dlg.querySelector('.sheet-body');
+    const body = e.target.closest('.form-pane') || dlg.querySelector('.sheet-body');
     // Nur wenn der Inhalt ganz oben ist – sonst wird normal gescrollt
     if (body && body.contains(e.target) && body.scrollTop > 0) return;
     const t = e.touches[0];
