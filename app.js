@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -249,7 +249,11 @@ function noticeText(c) {
  */
 function schedule(c, ref = today()) {
   if (c.status === 'ended') return { kind: 'ended', endDate: parseISO(c.endDate) };
-  if (c.status === 'cancelled') return { kind: 'cancelled', endDate: parseISO(c.endDate) };
+  if (c.status === 'cancelled') {
+    const sentAt = parseISO(c.cancelledAt);
+    return { kind: 'cancelled', endDate: parseISO(c.endDate), confirmed: !!c.cancelConfirmedAt, sentAt,
+      waitingDays: sentAt ? daysBetween(sentAt, ref) : 0 };
+  }
 
   const nv = Number(c.noticeValue) || 0;
   const nu = c.noticeUnit || 'months';
@@ -278,6 +282,34 @@ function schedule(c, ref = today()) {
   return { kind: 'deadline', termEnd: end, deadline, daysLeft: daysBetween(ref, deadline), inMinTerm: k === 0 && !!min };
 }
 
+// Nach so vielen Tagen ohne Kündigungsbestätigung wird nachgehakt
+const CONFIRM_WAIT_DAYS = 14;
+
+/** Vertragsende, wenn am Tag `sent` gekündigt wird (nächstmögliches Laufzeitende) */
+function endIfCancelledOn(c, sent) {
+  const s = schedule({ ...c, status: 'active' }, sent);
+  if (s.kind === 'deadline') return s.termEnd;
+  if (s.kind === 'anytime') return s.earliestEnd;
+  return null;
+}
+
+/**
+ * Gekündigte Verträge, deren Vertragsende vorbei ist, gelten automatisch als beendet.
+ * Ältere Daten ohne Bestätigungsfeld gelten als bestätigt (früher gab es den Schritt nicht).
+ */
+function normalizeCancellations() {
+  let changed = false;
+  const t = today();
+  for (const c of contracts) {
+    if ((c.status === 'cancelled' || c.status === 'ended') && c.cancelConfirmedAt === undefined) {
+      c.cancelConfirmedAt = c.cancelledAt || ''; changed = true;
+    }
+    const end = parseISO(c.endDate);
+    if (c.status === 'cancelled' && end && end < t) { c.status = 'ended'; changed = true; }
+  }
+  if (changed) persist();
+}
+
 function urgency(s) {
   if (s.kind !== 'deadline') return '';
   if (s.daysLeft <= 7) return 'urgent';
@@ -289,7 +321,9 @@ function scheduleBadge(s) {
   switch (s.kind) {
     case 'deadline': return `<span class="badge ${urgency(s)}">Kündigen bis ${fmtDate(s.deadline)}</span>`;
     case 'anytime': return `<span class="badge ok">Jederzeit kündbar</span>`;
-    case 'cancelled': return `<span class="badge">Gekündigt${s.endDate ? ' · endet ' + fmtDate(s.endDate) : ''}</span>`;
+    case 'cancelled': return s.confirmed
+      ? `<span class="badge">Gekündigt${s.endDate ? ' · endet ' + fmtDate(s.endDate) : ''}</span>`
+      : `<span class="badge ${s.waitingDays >= CONFIRM_WAIT_DAYS ? 'urgent' : 'soon'}">Bestätigung ausstehend</span>`;
     case 'ended': return `<span class="badge">Beendet</span>`;
     default: return `<span class="badge">Frist unbekannt</span>`;
   }
@@ -681,41 +715,43 @@ function renderAccounts() {
     .sort((x, y) => y.sum - x.sum || x.a.name.localeCompare(y.a.name, 'de'));
   const unassigned = costing.filter(c => !accountById(c.accountId));
 
-  const card = (head, list) => `
-    <div class="card account-card">
-      ${head}
-      ${list.length
-        ? `<div class="list">${list.sort((a, b) => monthlyCost(b) - monthlyCost(a)).map(itemHTML).join('')}</div>`
-        : '<p class="hint account-empty">Keine laufenden Verträge über dieses Konto.</p>'}
+  // Konten sind aufklappbar; geöffnete Konten merkt sich die App
+  const openSet = new Set(settings.accountsOpen || []);
+  const card = (key, head, list, editId) => {
+    const open = openSet.has(key);
+    return `
+    <div class="card account-card${open ? ' open' : ''}">
+      <button type="button" class="account-head${editId ? '' : ' muted'}" data-account-toggle="${esc(key)}" aria-expanded="${open}">
+        ${head}
+        <svg class="account-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="account-body"><div class="account-inner">
+        ${list.length
+          ? `<div class="list">${list.sort((a, b) => monthlyCost(b) - monthlyCost(a)).map(itemHTML).join('')}</div>`
+          : '<p class="hint account-empty">Keine laufenden Verträge über dieses Konto.</p>'}
+        ${editId ? `<button type="button" class="btn account-edit" data-account="${esc(editId)}">✎ Konto bearbeiten</button>` : ''}
+      </div></div>
     </div>`;
+  };
   const countLine = (list, sum) => list.length
     ? `${list.length}\u00a0${list.length === 1 ? 'Vertrag' : 'Verträge'} · ${eur.format(sum * 12)}\u00a0pro\u00a0Jahr` : 'Noch keine Verträge';
+  const side = sum => `<span class="item-side"><span class="price">${eur.format(sum)}</span><span class="item-interval">pro Monat</span></span>`;
 
-  const html = rows.map(({ a, list, sum }) => card(`
-      <button type="button" class="account-head" data-account="${esc(a.id)}" aria-label="Konto ${esc(a.name)} bearbeiten">
+  const html = rows.map(({ a, list, sum }) => card(a.id, `
         ${accountAvatar(a)}
         <span class="item-main">
           <span class="item-title">${esc(a.name)}</span>
-          <span class="item-sub">${esc(accountDetails(a)) || 'Details ergänzen …'}</span>
+          ${accountDetails(a) ? `<span class="item-sub">${esc(accountDetails(a))}</span>` : ''}
           <span class="item-sub">${countLine(list, sum)}</span>
         </span>
-        <span class="item-side">
-          <span class="price">${eur.format(sum)}</span>
-          <span class="item-interval">pro Monat</span>
-        </span>
-      </button>`, list)).join('')
-    + (unassigned.length ? card(`
-      <div class="account-head static">
+        ${side(sum)}`, list, a.id)).join('')
+    + (unassigned.length ? card('__none__', `
         <span class="avatar" style="background:var(--surface-2);color:var(--muted)" aria-hidden="true">?</span>
         <span class="item-main">
           <span class="item-title">Ohne Konto</span>
           <span class="item-sub">${countLine(unassigned, sumOf(unassigned))}</span>
         </span>
-        <span class="item-side">
-          <span class="price">${eur.format(sumOf(unassigned))}</span>
-          <span class="item-interval">pro Monat</span>
-        </span>
-      </div>`, unassigned) : '');
+        ${side(sumOf(unassigned))}`, unassigned, null) : '');
 
   $('#accounts').innerHTML = (html || '<div class="empty">Noch keine Konten angelegt.</div>')
     + '<button type="button" class="btn doc-add" id="account-add">＋ Konto hinzufügen</button>';
@@ -748,6 +784,7 @@ $('#list-sort').addEventListener('change', e => setListFilter('sort', e.target.v
 $('#list-reset').addEventListener('click', () => { settings.list = { ...LIST_DEFAULTS }; saveSettings(); renderContracts(); });
 
 function renderAll() {
+  normalizeCancellations();
   refreshFilterOptions();
   renderDashboard();
   renderContracts();
@@ -879,7 +916,14 @@ function statusAlertHTML(c) {
     </div>`;
   }
   if (s.kind === 'anytime') return `<div class="alert ok">Jederzeit kündbar. Bei Kündigung heute endet der Vertrag frühestens am <strong>${fmtDate(s.earliestEnd)}</strong>.</div>`;
-  if (s.kind === 'cancelled') return `<div class="alert info">Gekündigt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${s.endDate ? ` – läuft aus am <strong>${fmtDate(s.endDate)}</strong>` : ''}.</div>`;
+  if (s.kind === 'cancelled' && !s.confirmed) {
+    const late = s.waitingDays >= CONFIRM_WAIT_DAYS;
+    return `<div class="alert ${late ? 'urgent' : 'soon'}">
+      Kündigung abgeschickt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${c.cancelMethod ? ' per ' + esc(c.cancelMethod) : ''} – <strong>Bestätigung steht noch aus</strong>${s.waitingDays > 0 ? ` (seit ${s.waitingDays} ${s.waitingDays === 1 ? 'Tag' : 'Tagen'})` : ''}.<br>
+      <span style="font-weight:500">${late ? 'Bitte beim Anbieter nachhaken – ohne Bestätigung ist nicht sicher, dass die Kündigung angekommen ist.' : 'Bewahre den Nachweis (z.\u00a0B. Sendebestätigung) auf – am besten unten als Dokument.'}</span>
+    </div>`;
+  }
+  if (s.kind === 'cancelled') return `<div class="alert ok">Kündigung bestätigt${c.cancelConfirmedAt ? ' am ' + fmtISO(c.cancelConfirmedAt) : ''}${s.endDate ? ` – läuft aus am <strong>${fmtDate(s.endDate)}</strong> (${relDays(daysBetween(today(), s.endDate))})` : ''}.</div>`;
   if (s.kind === 'ended') return `<div class="alert info">Vertrag beendet${s.endDate ? ' am ' + fmtDate(s.endDate) : ''}.</div>`;
   return `<div class="alert info">Für die Fristberechnung fehlt das Abschlussdatum.</div>`;
 }
@@ -1388,7 +1432,7 @@ window.addEventListener('resize', () => {
 
 const form = $('#contract-form');
 const FIELDS = ['name', 'provider', 'category', 'status', 'contractNo', 'amount', 'interval', 'accountId', 'paymentMethod',
-  'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'endDate', 'website', 'cancelContact', 'notes',
+  'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate', 'website', 'cancelContact', 'notes',
   'logoMode', 'logo'];
 let editingId = null;
 
@@ -1400,6 +1444,8 @@ function openForm(id = null) {
   form.reset();
   fillAccountSelect();
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
+  if (!form.elements.status.value) form.elements.status.value = 'active';
+  endDateAuto = false;
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
   if (!form.elements.logoMode.value) form.elements.logoMode.value = 'auto';
@@ -1452,7 +1498,12 @@ function readForm() {
   for (const f of FIELDS) data[f] = form.elements[f].value.trim();
   data.amount = data.amount === '' ? 0 : Math.round(parseFloat(data.amount.replace(',', '.')) * 100) / 100;
   for (const n of ['minTermMonths', 'renewalMonths', 'noticeValue']) data[n] = data[n] === '' ? '' : Math.max(0, parseInt(data[n], 10) || 0);
-  if (data.status === 'active') { data.cancelledAt = ''; data.endDate = ''; }
+  if (data.status === 'active') { data.cancelledAt = ''; data.cancelMethod = ''; data.cancelConfirmedAt = ''; data.endDate = ''; }
+  else {
+    // Ist das Vertragsende vorbei, ist der Vertrag beendet – sonst (noch) gekündigt
+    const end = parseISO(data.endDate);
+    data.status = end ? (end < today() ? 'ended' : 'cancelled') : data.status;
+  }
   if (data.logoMode !== 'custom') data.logo = '';
   else data.logoV = 2;
   if (!accountById(data.accountId)) data.accountId = '';
@@ -1595,11 +1646,76 @@ $('#logo-file').addEventListener('change', async e => {
   }
 });
 
-function updateFormState() {
-  const status = form.elements.status.value;
-  for (const el of $$('[data-show-when]', form)) el.hidden = !el.dataset.showWhen.split(' ').includes(status);
+/* Kündigungs-Ablauf: abgeschickt → bestätigt → ausgelaufen */
+let endDateAuto = false;
+function cancelState(d) {
+  if (d.status === 'active') return 'none';
+  if (d.status === 'ended') return 'ended';
+  return d.cancelConfirmedAt ? 'confirmed' : 'sent';
+}
+function updateCancelBox(d) {
+  const st = cancelState(d);
+  for (const el of $$('[data-cstate]', form)) el.hidden = !el.dataset.cstate.split(' ').includes(st);
+  const done = { sent: st !== 'none', confirmed: st !== 'none' && !!d.cancelConfirmedAt, ended: st === 'ended' };
+  const current = st === 'none' ? 'sent' : st === 'sent' ? 'confirmed' : st === 'confirmed' ? 'ended' : '';
+  const dates = { sent: d.cancelledAt, confirmed: d.cancelConfirmedAt, ended: d.endDate };
+  for (const li of $$('#cancel-steps li')) {
+    const k = li.dataset.step;
+    li.classList.toggle('done', done[k]);
+    li.classList.toggle('current', k === current);
+    const date = st !== 'none' && dates[k] ? fmtISO(dates[k]) : '';
+    li.querySelector('.step-date').textContent = k === 'ended' && date && st !== 'ended' ? 'am ' + date : date;
+  }
+  if (st === 'sent') {
+    const days = d.cancelledAt ? daysBetween(parseISO(d.cancelledAt), today()) : 0;
+    const late = days >= CONFIRM_WAIT_DAYS;
+    $('#cancel-wait').textContent = late
+      ? `Seit ${days} Tagen keine Bestätigung – bitte beim Anbieter nachhaken.`
+      : 'Sobald der Anbieter die Kündigung bestätigt hat, hier abhaken.';
+    $('#cancel-wait').className = late ? 'hint danger-text' : 'hint';
+  }
+  const calc = d.cancelledAt ? endIfCancelledOn(d, parseISO(d.cancelledAt)) : null;
+  $('#cancel-end-hint').textContent = st === 'none' ? ''
+    : calc ? `Berechnet: Bei Kündigung am ${fmtISO(d.cancelledAt)} endet der Vertrag am ${fmtDate(calc)}. Nennt die Bestätigung ein anderes Datum, trag es ein.`
+      : 'Trag das Vertragsende ein (steht meist in der Kündigungsbestätigung).';
+}
+function fillAutoEndDate() {
+  if (!endDateAuto && form.elements.endDate.value) return;
+  const d = readForm();
+  const calc = d.cancelledAt ? endIfCancelledOn(d, parseISO(d.cancelledAt)) : null;
+  if (calc) { form.elements.endDate.value = toISO(calc); endDateAuto = true; }
+}
+$('#cancel-send').addEventListener('click', () => {
+  form.elements.status.value = 'cancelled';
+  form.elements.cancelledAt.value = toISO(today());
+  form.elements.cancelConfirmedAt.value = '';
+  endDateAuto = true;
+  fillAutoEndDate();
+  formDirty = true;
+  updateFormState();
+});
+$('#cancel-confirm').addEventListener('click', () => {
+  form.elements.cancelConfirmedAt.value = toISO(today());
+  formDirty = true;
+  updateFormState();
+});
+$('#cancel-undo').addEventListener('click', async () => {
+  const ok = await ask({
+    title: 'Kündigung zurücknehmen?', message: 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung werden beim Speichern entfernt.',
+    buttons: [{ label: 'Zurücknehmen', value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }],
+  });
+  if (!ok) return;
+  for (const f of ['cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate']) form.elements[f].value = '';
+  form.elements.status.value = 'active';
+  formDirty = true;
+  updateFormState();
+});
+form.elements.cancelledAt.addEventListener('change', () => { fillAutoEndDate(); updateFormState(); });
+form.elements.endDate.addEventListener('input', () => { endDateAuto = false; });
 
+function updateFormState() {
   const data = readForm();
+  const status = data.status;
   const s = schedule(data);
   const p = $('#form-preview');
   if (status !== 'active') {
@@ -1611,6 +1727,7 @@ function updateFormState() {
   } else {
     p.textContent = '→ Trage das Abschlussdatum ein, um die Frist zu berechnen.';
   }
+  updateCancelBox(data);
   // Beim Bearbeiten oben den Fristhinweis zeigen (wie früher in der Detailansicht), live aktualisiert
   $('#form-alert').innerHTML = editingId ? statusAlertHTML(data) : '';
   $('#form-ics').hidden = !(editingId && s.kind === 'deadline');
@@ -1769,8 +1886,20 @@ $('#account-delete').addEventListener('click', async () => {
 
 // Konten-Seite: Konto antippen bzw. neues Konto
 $('#accounts').addEventListener('click', e => {
-  const head = e.target.closest('[data-account]');
-  if (head) { openAccountForm(head.dataset.account); return; }
+  const toggle = e.target.closest('[data-account-toggle]');
+  if (toggle) {
+    const key = toggle.dataset.accountToggle;
+    const open = new Set(settings.accountsOpen || []);
+    const isOpen = !open.has(key);
+    isOpen ? open.add(key) : open.delete(key);
+    settings.accountsOpen = [...open];
+    saveSettings();
+    toggle.closest('.account-card').classList.toggle('open', isOpen);
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    return;
+  }
+  const edit = e.target.closest('[data-account]');
+  if (edit) { openAccountForm(edit.dataset.account); return; }
   if (e.target.closest('#account-add')) openAccountForm();
 });
 
@@ -1832,7 +1961,7 @@ function exportCSV() {
     ['Monatlich', c => monthlyCost(c).toFixed(2).replace('.', ',')], ['Konto', 'account'], ['IBAN', c => formatIban(accountById(c.accountId)?.iban || '')], ['Zahlungsart', 'paymentMethod'],
     ['Abschluss', 'startDate'], ['Mindestlaufzeit (Monate)', 'minTermMonths'], ['Verlängerung (Monate)', 'renewalMonths'],
     ['Kündigungsfrist', noticeText], ['Kündigen bis', c => { const s = schedule(c); return s.kind === 'deadline' ? toISO(s.deadline) : ''; }],
-    ['Gekündigt am', 'cancelledAt'], ['Vertragsende', 'endDate'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
+    ['Gekündigt am', 'cancelledAt'], ['Gekündigt per', 'cancelMethod'], ['Bestätigt am', 'cancelConfirmedAt'], ['Vertragsende', 'endDate'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
     ['Kündigung an', 'cancelContact'], ['Notizen', 'notes'], ['Dokumente', c => docCounts.get(c.id) || 0]];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.map(c => cell(c[0])).join(';'),
@@ -1907,7 +2036,7 @@ function demoData() {
     mk({ name: 'Strom', provider: 'Stadtwerke', category: 'Strom', amount: 78, interval: 'monthly', account: 'Gemeinschaftskonto', paymentMethod: 'Lastschrift', startDate: iso(addMonths(t, -8)), minTermMonths: 12, renewalMonths: 1, noticeValue: 1 }),
     mk({ name: 'Internet 250', provider: 'Vodafone', category: 'Internet', amount: 44.99, interval: 'monthly', account: 'Gemeinschaftskonto', paymentMethod: 'Lastschrift', startDate: iso(addMonths(t, -30)), minTermMonths: 24, renewalMonths: 1, noticeValue: 1 }),
     mk({ name: 'Microsoft 365', provider: 'Microsoft', category: 'Software', amount: 99, interval: 'yearly', account: 'Kreditkarte Visa', paymentMethod: 'Kreditkarte', startDate: iso(addDays(addMonths(t, -12), 40)), minTermMonths: 12, renewalMonths: 12, noticeValue: '' }),
-    mk({ name: 'Zeitschrift', provider: 'Verlag', category: 'Zeitschriften', amount: 29.7, interval: 'quarterly', account: 'Girokonto Sparkasse', paymentMethod: 'Rechnung', startDate: iso(addMonths(t, -14)), status: 'cancelled', cancelledAt: iso(addDays(t, -10)), endDate: iso(addDays(t, 45)), minTermMonths: 12, renewalMonths: 3, noticeValue: 6, noticeUnit: 'weeks' }),
+    mk({ name: 'Zeitschrift', provider: 'Verlag', category: 'Zeitschriften', amount: 29.7, interval: 'quarterly', account: 'Girokonto Sparkasse', paymentMethod: 'Rechnung', startDate: iso(addMonths(t, -14)), status: 'cancelled', cancelledAt: iso(addDays(t, -10)), cancelMethod: 'E-Mail', cancelConfirmedAt: '', endDate: iso(addDays(t, 45)), minTermMonths: 12, renewalMonths: 3, noticeValue: 6, noticeUnit: 'weeks' }),
   ];
 }
 

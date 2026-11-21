@@ -208,12 +208,6 @@
             <input name="provider" placeholder="z. B. Telekom"></label>
           <label class="field"><span>Kategorie</span>
             <input name="category" list="dl-categories" placeholder="z. B. Streaming"></label>
-          <label class="field"><span>Status</span>
-            <select name="status">
-              <option value="active">Aktiv</option>
-              <option value="cancelled">Gekündigt (läuft noch aus)</option>
-              <option value="ended">Beendet</option>
-            </select></label>
           <label class="field"><span>Vertrags-/Kundennummer</span>
             <input name="contractNo" autocomplete="off"></label>
         </fieldset>
@@ -246,7 +240,7 @@
         </fieldset>
 
         <fieldset>
-          <legend>Laufzeit &amp; Kündigung</legend>
+          <legend>Laufzeit &amp; Kündigungsfrist</legend>
           <label class="field"><span>Vertragsbeginn (Abschluss)</span>
             <input name="startDate" type="date"></label>
           <label class="field"><span>Mindestlaufzeit (Monate)</span>
@@ -262,13 +256,48 @@
                 <option value="months" selected>Monate</option>
               </select>
             </div></div>
-          <label class="field" data-show-when="cancelled ended"><span>Gekündigt am</span>
-            <input name="cancelledAt" type="date"></label>
-          <label class="field" data-show-when="cancelled ended"><span>Vertragsende</span>
-            <input name="endDate" type="date"></label>
           <p class="hint span-2" id="form-preview"></p>
           <div class="span-2">
             <button type="button" class="btn" id="form-ics" hidden>📅 Frist in Kalender eintragen</button>
+          </div>
+        </fieldset>
+
+        <fieldset id="cancel-box">
+          <legend>Kündigung</legend>
+          <input type="hidden" name="status" value="active">
+          <ol class="steps span-2" id="cancel-steps" aria-label="Ablauf der Kündigung">
+            <li data-step="sent"><span class="step-dot"></span><span class="step-label">Abgeschickt</span><span class="step-date"></span></li>
+            <li data-step="confirmed"><span class="step-dot"></span><span class="step-label">Bestätigt</span><span class="step-date"></span></li>
+            <li data-step="ended"><span class="step-dot"></span><span class="step-label">Ausgelaufen</span><span class="step-date"></span></li>
+          </ol>
+          <div class="span-2 cancel-action" data-cstate="none">
+            <p class="hint">Noch nicht gekündigt. Wenn du die Kündigung verschickt hast, trag sie hier ein – der Vertrag wandert dann zu „Gekündigt“.</p>
+            <button type="button" class="btn btn-primary" id="cancel-send">✉️ Kündigung abgeschickt</button>
+          </div>
+          <label class="field" data-cstate="sent confirmed ended"><span>Abgeschickt am</span>
+            <input name="cancelledAt" type="date"></label>
+          <label class="field" data-cstate="sent confirmed ended"><span>Verschickt per</span>
+            <select name="cancelMethod">
+              <option value="">– bitte wählen –</option>
+              <option>E-Mail</option>
+              <option>Online-Formular / Kündigungsbutton</option>
+              <option>Brief</option>
+              <option>Einschreiben</option>
+              <option>Fax</option>
+              <option>Telefon</option>
+              <option>Im Geschäft</option>
+            </select></label>
+          <div class="span-2 cancel-action" data-cstate="sent">
+            <p class="hint" id="cancel-wait"></p>
+            <button type="button" class="btn btn-primary" id="cancel-confirm">✓ Bestätigung erhalten</button>
+          </div>
+          <label class="field" data-cstate="confirmed ended"><span>Bestätigt am</span>
+            <input name="cancelConfirmedAt" type="date"></label>
+          <label class="field" data-cstate="sent confirmed ended"><span>Vertragsende</span>
+            <input name="endDate" type="date"></label>
+          <p class="hint span-2" id="cancel-end-hint" data-cstate="sent confirmed ended"></p>
+          <div class="span-2" data-cstate="sent confirmed ended">
+            <button type="button" class="btn btn-link" id="cancel-undo">Kündigung zurücknehmen</button>
           </div>
         </fieldset>
 

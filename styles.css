@@ -524,24 +524,34 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 /* Konten */
 .account-card {
   padding: 0; overflow: hidden; background: var(--account-body);
-  border-color: var(--account-edge); margin-bottom: 18px;
+  border-color: var(--account-edge); margin-bottom: 14px;
 }
 .account-head {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 12px;
-  width: 100%; padding: 14px 14px 14px 12px; border: 0; text-align: left; cursor: pointer;
-  background: var(--account-head-bg); color: #fff; border-radius: 0;
-  border-bottom: 3px solid var(--mint);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 2px 12px;
+  width: 100%; padding: 14px 12px; border: 0; text-align: left; cursor: pointer;
+  background: var(--account-head-bg); color: #fff; border-radius: 0; font: inherit;
+  border-bottom: 3px solid transparent; transition: border-color .2s ease;
 }
-.account-head .item-title { color: #fff; font-size: 1.05rem; }
+.account-card.open .account-head { border-bottom-color: var(--mint); }
+.account-head.muted { background: var(--account-head-muted); }
+.account-card.open .account-head.muted { border-bottom-color: var(--muted); }
+.account-head .item-title { color: #fff; font-size: 1.05rem; white-space: normal; overflow-wrap: anywhere; }
 .account-head .item-sub, .account-head .item-interval { color: rgba(255, 255, 255, .72); }
 .account-head .price { color: var(--mint); font-size: 1.15rem; }
-.account-head:not(.static):hover .item-title { color: var(--mint); }
+.account-head:hover .item-title { color: var(--mint); }
 .account-head:focus-visible { outline: 2px solid var(--mint); outline-offset: -4px; }
-.account-head.static { cursor: default; background: var(--account-head-muted); border-bottom-color: var(--muted); }
 .account-head .avatar { width: 46px; height: 46px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .18); }
 .account-head .item-sub + .item-sub { font-size: .8rem; }
-.account-empty { margin: 0; padding: 14px; }
-.account-card > .list { gap: 8px; padding: 12px; }
+.account-chevron { width: 22px; height: 22px; color: rgba(255, 255, 255, .8); transition: transform .25s ease; }
+.account-card.open .account-chevron { transform: rotate(180deg); }
+/* Auf- und Zuklappen mit weicher Höhenänderung */
+.account-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .25s ease; }
+.account-card.open .account-body { grid-template-rows: 1fr; }
+.account-inner { overflow: hidden; min-height: 0; }
+.account-card:not(.open) .account-inner { visibility: hidden; transition: visibility 0s .25s; }
+.account-empty { margin: 0; padding: 14px 14px 0; }
+.account-inner > .list { gap: 8px; padding: 12px 12px 0; }
+.account-edit { display: block; margin: 10px 12px 12px auto; min-height: 38px; padding: 6px 14px; font-size: .9rem; }
 #account-add { margin-top: 4px; }
 .iban-row { display: flex; gap: 8px; }
 .iban-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
@@ -558,3 +568,31 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .form-alert .alert { margin-bottom: 16px; }
 .form-grid legend .count { color: var(--muted); font-weight: 500; }
 #dlg-form .sheet-foot .btn-danger { margin-right: auto; }
+
+/* Kündigungs-Ablauf: Schritt-Anzeige */
+.steps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.steps li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 0 4px; }
+.steps li::before {
+  content: ''; position: absolute; top: 13px; right: 50%; width: 100%; height: 3px; border-radius: 2px;
+  background: var(--border); z-index: 0;
+}
+.steps li:first-child::before { display: none; }
+.steps li.done::before, .steps li.current::before { background: var(--mint); }
+.steps li.current::before { background: linear-gradient(90deg, var(--mint), var(--border)); }
+.step-dot {
+  position: relative; z-index: 1; width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--border); background: var(--surface); display: grid; place-items: center;
+}
+.steps li.current .step-dot { border-color: var(--mint); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mint) 22%, transparent); }
+.steps li.done .step-dot { border-color: var(--mint); background: var(--mint); }
+.steps li.done .step-dot::after {
+  content: ''; width: 10px; height: 6px; border: solid var(--navy); border-width: 0 0 3px 3px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+.step-label { font-size: .85rem; font-weight: 650; color: var(--muted); }
+.steps li.done .step-label, .steps li.current .step-label { color: var(--text); }
+.step-date { font-size: .78rem; color: var(--muted); min-height: 1em; font-variant-numeric: tabular-nums; }
+.cancel-action { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.cancel-action .hint { margin: 0; }
+.btn-link { border: 0; background: none; padding: 4px 0; min-height: 0; color: var(--danger); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.btn-link:hover { background: none; }
