@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.24.1';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';

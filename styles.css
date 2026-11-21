@@ -696,3 +696,11 @@ html.theme-fade, html.theme-fade * { transition: background-color .3s ease, colo
   .theme-switch[aria-checked=true] .theme-knob { transform: translateX(26px); }
   .theme-ico { width: 26px; height: 26px; }
 }
+
+/* Keine eckige Tipp-Markierung des Handy-Browsers – stattdessen eigene, runde Rückmeldung */
+html { -webkit-tap-highlight-color: transparent; }
+.theme-switch { transition: transform .12s ease, background-color .2s ease; }
+.theme-switch:active { transform: scale(.94); background: rgba(255, 255, 255, .16); }
+.tabbar .fab { transition: transform .12s ease, box-shadow .2s ease; }
+.tabbar .fab:active { box-shadow: 0 4px 14px rgba(45, 212, 191, .45), 0 1px 3px rgba(15, 23, 42, .25); }
+.top-btn:active { transform: scale(.94); }
