@@ -740,7 +740,64 @@ dialog.sheet.bottom-sheet#dlg-form.stacked { height: min(84dvh, 800px); }
 .item-next { color: var(--accent-text); font-size: .76rem; font-weight: 600; white-space: nowrap; }
 /* Kosten nach Kategorie: Prozent im Balken */
 .bar-track { position: relative; height: 22px; }
-.bar-fill { display: flex !important; align-items: center; justify-content: flex-end; }
-.bar-pct { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: .74rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.bar-pct.in { right: auto; color: var(--navy); }
-.bar-pct.out { color: var(--muted); }
+/* Prozent mittig im Balkenfeld – bei allen Zeilen an derselben Stelle */
+.bar-pct {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text); font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .12);
+}
+
+/* Kopfzeile: Schalter und Knöpfe als eine ruhige Gruppe, gleich hoch */
+.top-actions { align-items: center; gap: 2px !important; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+.top-btn { width: 34px; height: 34px; border-radius: 50%; background: transparent; }
+.top-btn:hover { background: rgba(255, 255, 255, .1); }
+.top-btn svg { width: 19px; height: 19px; }
+.top-badge { top: -1px; right: -2px; }
+.theme-switch { width: 60px; height: 34px; margin-right: 2px; background: rgba(255, 255, 255, .09); }
+.theme-knob { width: 28px; height: 28px; }
+.theme-switch[aria-checked=true] .theme-knob { transform: translateX(26px); }
+.theme-ico { width: 27px; }
+@media (max-width: 380px) {
+  .top-btn { width: 32px; height: 32px; }
+  .theme-switch { width: 56px; height: 32px; }
+  .theme-knob { width: 26px; height: 26px; }
+  .theme-switch[aria-checked=true] .theme-knob { transform: translateX(24px); }
+  .theme-ico { width: 25px; height: 26px; }
+}
+
+/* Reiter: Pfeile, wenn links/rechts weitere Reiter versteckt sind */
+.form-tabs-wrap { position: relative; flex-shrink: 0; }
+.tabs-arrow {
+  position: absolute; top: 0; bottom: 1px; z-index: 2; width: 34px; padding: 0; border: 0; cursor: pointer;
+  display: grid; place-items: center; color: var(--accent-text);
+}
+.tabs-arrow svg { width: 18px; height: 18px; }
+.tabs-arrow.left { left: 0; background: linear-gradient(90deg, var(--surface) 55%, transparent); justify-items: start; padding-left: 6px; }
+.tabs-arrow.right { right: 0; background: linear-gradient(270deg, var(--surface) 55%, transparent); justify-items: end; padding-right: 6px; }
+
+/* Dokument-Betrachter: Bedienleiste unten */
+.viewer-head { justify-content: center; }
+.viewer-head .viewer-titles { text-align: center; }
+.viewer-foot { justify-content: flex-start !important; gap: 2px; flex-wrap: nowrap; }
+.viewer-foot .icon-btn { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; }
+.viewer-foot .icon-btn svg { width: 20px; height: 20px; }
+.viewer-foot .zoom-label { min-width: 50px; text-align: center; cursor: default; font-size: .9rem; }
+.viewer-reset {
+  height: 32px; padding: 0 10px; margin-left: 4px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 999px;
+  background: none; color: #e8eef6; font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
+}
+.viewer-reset:active { background: rgba(255, 255, 255, .1); }
+.viewer-gap { flex: 1; min-width: 4px; }
+#viewer-delete { color: #fb923c; }
+@media (max-width: 380px) {
+  .viewer-foot .icon-btn { width: 34px; height: 36px; }
+  .viewer-foot .zoom-label { min-width: 42px; font-size: .82rem; }
+  .viewer-reset { padding: 0 7px; }
+}
+.price-avg { display: block; margin-top: 4px; color: var(--muted); }
+/* Feste Breite für die Beträge, damit alle Balken gleich lang sind (Prozente exakt untereinander) */
+.bar-row { grid-template-columns: minmax(90px, 160px) minmax(0, 1fr) 5.4em; }
+.bar-value { text-align: right; }
+@media (max-width: 560px) { .bar-row { grid-template-columns: 90px minmax(0, 1fr) 5.4em; } }
+.bar-fill { display: block; }

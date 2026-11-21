@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=1.28.0">
+  <link rel="stylesheet" href="styles.css?v=1.29.0">
 </head>
 <body>
   <header class="topbar" id="topbar">
@@ -171,12 +171,16 @@
         <h2 id="form-title">Neuer Vertrag</h2>
         <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
       </div>
+      <div class="form-tabs-wrap">
+        <button type="button" class="tabs-arrow left" id="tabs-left" aria-label="Weitere Reiter links" tabindex="-1" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
       <div class="form-tabs" id="form-tabs" role="tablist" aria-label="Bereiche">
         <button type="button" role="tab" data-pane="0" aria-selected="true">Allgemein</button>
         <button type="button" role="tab" data-pane="1" aria-selected="false">Kosten &amp; Zahlung</button>
         <button type="button" role="tab" data-pane="2" aria-selected="false">Kontakt &amp; Notizen</button>
         <button type="button" role="tab" data-pane="3" aria-selected="false">Laufzeit &amp; Kündigung</button>
         <button type="button" role="tab" data-pane="4" aria-selected="false">Dokumente <span class="count" id="doc-count"></span></button>
+      </div>
+        <button type="button" class="tabs-arrow right" id="tabs-right" aria-label="Weitere Reiter rechts" tabindex="-1" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
       </div>
       <div class="sheet-body form-pager" id="form-pager">
         <section class="form-pane form-grid" data-pane="0" role="tabpanel">
@@ -364,22 +368,22 @@
   <!-- Dokument-Betrachter -->
   <dialog id="dlg-viewer" class="viewer">
     <div class="viewer-head">
-      <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
       <div class="viewer-titles">
         <h2 id="viewer-title"></h2>
         <span id="viewer-page" class="viewer-sub"></span>
       </div>
-      <button type="button" class="icon-btn" id="viewer-rename" aria-label="Umbenennen" title="Umbenennen">✎</button>
-      <button type="button" class="icon-btn" id="viewer-delete" aria-label="Löschen" title="Löschen">🗑</button>
     </div>
     <div id="viewer-body" class="viewer-body"></div>
     <div class="viewer-foot">
-      <div class="zoom">
-        <button type="button" class="icon-btn" id="viewer-zoom-out" aria-label="Verkleinern">−</button>
-        <button type="button" class="zoom-label" id="viewer-zoom" title="Auf 100 % zurücksetzen">100 %</button>
-        <button type="button" class="icon-btn" id="viewer-zoom-in" aria-label="Vergrößern">＋</button>
-      </div>
-      <button type="button" class="btn btn-primary" id="viewer-share">Teilen</button>
+      <button type="button" class="icon-btn" id="viewer-zoom-out" aria-label="Verkleinern"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <span class="zoom-label" id="viewer-zoom" aria-live="polite">100 %</span>
+      <button type="button" class="icon-btn" id="viewer-zoom-in" aria-label="Vergrößern"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
+      <button type="button" class="viewer-reset" id="viewer-reset" aria-label="Auf 100 % zurücksetzen">100%</button>
+      <span class="viewer-gap"></span>
+      <button type="button" class="icon-btn" id="viewer-share" aria-label="Teilen" title="Teilen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
+      <button type="button" class="icon-btn" id="viewer-rename" aria-label="Umbenennen" title="Umbenennen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></button>
+      <button type="button" class="icon-btn" id="viewer-delete" aria-label="Löschen" title="Löschen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></svg></button>
+      <button type="button" class="icon-btn" data-close aria-label="Schließen" title="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
   </dialog>
 
@@ -509,6 +513,6 @@
       }, 2500);
     });
   </script>
-  <script src="app.js?v=1.28.0"></script>
+  <script src="app.js?v=1.29.0"></script>
 </body>
 </html>

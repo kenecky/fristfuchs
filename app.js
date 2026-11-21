@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.28.0';
+const APP_VERSION = '1.29.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -260,6 +260,36 @@ function priceAt(c, d = today()) {
   return { ...(past || periods.sort((x, y) => (x.from || 0) - (y.from || 0))[0]), kind: 'period' };
 }
 const currentAmount = c => priceAt(c).amount;
+/**
+ * Durchschnittlicher Preis (je Zahlungsintervall) von Vertragsbeginn bis heute bzw. bis zum Vertragsende,
+ * gewichtet nach der Dauer jedes Preises. Nur sinnvoll, wenn es in diesem Zeitraum mehrere Preise gab.
+ */
+function averagePrice(c) {
+  const periods = pricePeriods(c);
+  const start = parseISO(c.startDate) || periods.map(p => parseISO(p.from)).filter(Boolean).sort((a, b) => a - b)[0];
+  if (!start) return null;
+  let end = today();
+  const ce = parseISO(c.endDate);
+  if (ce && ce < end && c.status !== 'active') end = ce;
+  if (end < start) return null;
+  const stop = addDays(end, 1);
+  const pts = [start, stop];
+  const add = d => { if (d && d > start && d < stop) pts.push(d); };
+  for (const p of periods) { add(parseISO(p.from)); const t = parseISO(p.to); if (t) add(addDays(t, 1)); }
+  add(renewalStart(c));
+  const uniq = [...new Set(pts.map(d => d.getTime()))].sort((a, b) => a - b).map(t => new Date(t));
+  let sum = 0, days = 0;
+  const amounts = new Set();
+  for (let i = 0; i < uniq.length - 1; i++) {
+    const n = daysBetween(uniq[i], uniq[i + 1]);
+    if (n <= 0) continue;
+    const a = priceAt(c, uniq[i]).amount;
+    amounts.add(a);
+    sum += a * n; days += n;
+  }
+  if (!days || amounts.size < 2) return null;
+  return { amount: sum / days, from: start, to: end, days, open: end.getTime() === today().getTime() };
+}
 function nextPriceChange(c, d = today()) {
   const cur = currentAmount(c);
   const dates = [];
@@ -710,9 +740,7 @@ function renderDeadlines(withDeadline, due) {
 
 // Balken mit Prozentangabe: im Balken, wenn genug Platz ist, sonst direkt dahinter
 function barHTML(width, label) {
-  const inside = width >= 34;
-  return `<span class="bar-fill" style="width:${width.toFixed(1)}%"></span>`
-    + `<span class="bar-pct ${inside ? 'in' : 'out'}" style="${inside ? `right:calc(${(100 - width).toFixed(1)}% + 8px)` : `left:calc(${width.toFixed(1)}% + 6px)`}">${label}</span>`;
+  return `<span class="bar-fill" style="width:${width.toFixed(1)}%"></span>${label ? `<span class="bar-pct">${label}</span>` : ''}`;
 }
 
 function sortContracts(list, sort = 'deadline') {
@@ -1310,7 +1338,10 @@ async function openViewer(id) {
   viewer.zoom = 1;
   $('#viewer-title').textContent = doc.name;
   $('#viewer-page').textContent = '';
-  $('#viewer-share').textContent = canShareFiles() ? 'Teilen' : 'Herunterladen';
+  // Kann das Gerät nicht teilen, wird heruntergeladen
+  const share = canShareFiles();
+  $('#viewer-share').setAttribute('aria-label', share ? 'Teilen' : 'Herunterladen');
+  $('#viewer-share').title = share ? 'Teilen' : 'Herunterladen';
   vBody.innerHTML = '<p class="viewer-msg">Wird geladen …</p>';
   $('#dlg-viewer').showModal();
   updateZoomLabel();
@@ -1345,7 +1376,7 @@ async function openViewer(id) {
   } catch (err) {
     if (token !== viewer.token) return;
     vBody.innerHTML = `<p class="viewer-msg">${err && err.name === 'PasswordException'
-      ? 'Diese PDF ist passwortgeschützt und kann hier nicht angezeigt werden. Über „' + esc($('#viewer-share').textContent) + '“ kannst du sie in einer anderen App öffnen.'
+      ? 'Diese PDF ist passwortgeschützt und kann hier nicht angezeigt werden. Über das Teilen-Symbol unten kannst du sie in einer anderen App öffnen.'
       : 'Die PDF konnte nicht angezeigt werden.'}</p>`;
   }
 }
@@ -1469,7 +1500,7 @@ async function shareDoc() {
 
 $('#viewer-zoom-in').addEventListener('click', () => stepZoom(1));
 $('#viewer-zoom-out').addEventListener('click', () => stepZoom(-1));
-$('#viewer-zoom').addEventListener('click', () => setZoom(1));
+$('#viewer-reset').addEventListener('click', () => setZoom(1));
 $('#viewer-share').addEventListener('click', shareDoc);
 $('#viewer-rename').addEventListener('click', () => viewer.doc && startRename(viewer.doc.id));
 $('#viewer-delete').addEventListener('click', async () => {
@@ -1561,6 +1592,8 @@ function openForm(id = null) {
   noAutoFocus($('#dlg-form'));
   for (const pane of $$('.form-pane')) pane.scrollTop = 0;
   setFormTab(0, false);
+  $('#form-tabs').scrollLeft = 0;
+  requestAnimationFrame(updateTabArrows);
   renderDocs(currentId);
 }
 let formIsNew = false;
@@ -1583,6 +1616,17 @@ function setFormTab(i, smooth = true) {
   markFormTab(i);
 }
 formTabs.forEach((t, i) => t.addEventListener('click', () => setFormTab(i)));
+// Pfeile links/rechts, wenn Reiter außerhalb des sichtbaren Bereichs liegen
+function updateTabArrows() {
+  const bar = $('#form-tabs');
+  const max = bar.scrollWidth - bar.clientWidth;
+  $('#tabs-left').hidden = bar.scrollLeft <= 2;
+  $('#tabs-right').hidden = bar.scrollLeft >= max - 2;
+}
+$('#form-tabs').addEventListener('scroll', () => requestAnimationFrame(updateTabArrows), { passive: true });
+window.addEventListener('resize', updateTabArrows);
+$('#tabs-left').addEventListener('click', () => setFormTab(Math.max(0, formTab - 1)));
+$('#tabs-right').addEventListener('click', () => setFormTab(Math.min(formTabs.length - 1, formTab + 1)));
 formPager.addEventListener('scroll', () => {
   const i = Math.round(formPager.scrollLeft / Math.max(1, formPager.clientWidth));
   if (i !== formTab && formTabs[i]) markFormTab(i);
@@ -1825,8 +1869,11 @@ function updatePriceInfo(d) {
   }
   if (!cur) { $('#price-now').innerHTML = ''; return; }
   const next = nextPriceChange(d);
+  const avg = averagePrice(d);
+  const iv = (INTERVALS[d.interval] || INTERVALS.monthly).label;
   $('#price-now').innerHTML = `Aktuell gültig: <strong>${eur.format(cur.amount)}</strong>${cur.kind === 'renewal' ? ' (nach Verlängerung)' : ''}`
-    + (next ? ` · ab ${fmtDate(next.from)}: <strong>${eur.format(next.amount)}</strong>${next.kind === 'renewal' ? ' (nach Verlängerung)' : ''}` : '');
+    + (next ? ` · ab ${fmtDate(next.from)}: <strong>${eur.format(next.amount)}</strong>${next.kind === 'renewal' ? ' (nach Verlängerung)' : ''}` : '')
+    + (avg ? `<span class="price-avg">Ø Durchschnitt ${fmtDate(avg.from)} – ${avg.open ? 'heute' : fmtDate(avg.to)}: <strong>${eur.format(avg.amount)}</strong> ${iv}</span>` : '');
 }
 
 /* Kündigungs-Ablauf: abgeschickt → bestätigt → ausgelaufen */
