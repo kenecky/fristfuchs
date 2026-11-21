@@ -13,12 +13,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=1.32.0">
+  <link rel="stylesheet" href="styles.css?v=1.33.0">
 </head>
 <body>
   <header class="topbar" id="topbar">
     <div class="brand">
-      <img class="brand-logo" src="icons/logo-mark.svg" alt="" width="54" height="54">
+      <button type="button" class="brand-home" id="brand-home" aria-label="Zur Übersicht"><img class="brand-logo" src="icons/logo-mark.svg" alt="" width="54" height="54"></button>
       <div class="brand-text">
         <span class="brand-name">Fristfuchs</span>
         <h1 id="page-title">Übersicht</h1>
@@ -132,7 +132,7 @@
       </div>
 
       <div class="card settings">
-        <h2>Daten</h2>
+        <h2>Backup</h2>
         <p class="hint">Alle Daten werden ausschließlich lokal auf diesem Gerät gespeichert. Erstelle regelmäßig ein Backup, besonders bevor du Browserdaten löschst oder das Gerät wechselst. Das Backup enthält auch alle Dokumente.</p>
         <p class="hint" id="storage-info"></p>
         <div class="btn-row">
@@ -458,7 +458,8 @@
   <datalist id="dl-banks"></datalist>
 
   <!-- Konto anlegen / bearbeiten -->
-  <dialog id="dlg-account" class="sheet">
+  <dialog id="dlg-account" class="sheet bottom-sheet">
+    <div class="grabber" aria-hidden="true"></div>
     <form id="account-form" method="dialog" novalidate>
       <div class="sheet-head">
         <h2 id="account-form-title">Neues Konto</h2>
@@ -520,6 +521,6 @@
       }, 2500);
     });
   </script>
-  <script src="app.js?v=1.32.0"></script>
+  <script src="app.js?v=1.33.0"></script>
 </body>
 </html>

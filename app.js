@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.32.0';
+const APP_VERSION = '1.33.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -955,7 +955,7 @@ async function closeSheet(dlg, force = false) {
   if (!force && dlg.guardClose && !(await dlg.guardClose())) { dlg.style.transform = ''; return; }
   dlg.classList.add('closing');
   dlg.style.transform = `translateY(${dlg.offsetHeight + 20}px)`;
-  setTimeout(() => { dlg.close(); dlg.style.transform = ''; dlg.classList.remove('closing'); }, 220);
+  setTimeout(() => { dlg.close(); dlg.style.transform = ''; dlg.classList.remove('closing'); }, 300);
 }
 // Esc bei Fenstern von unten: ebenfalls über closeSheet (Animation und ggf. Rückfrage)
 for (const sheet of document.querySelectorAll('dialog.bottom-sheet')) {
@@ -2085,7 +2085,7 @@ function openAccountForm(id = null, forContract = false) {
   $('#account-delete').hidden = !id;
   updateAccountForm();
   $('#dlg-account').showModal();
-  if (!id) accForm.elements.name.focus();
+  noAutoFocus($('#dlg-account'));
 }
 
 // Kontoart ergibt sich aus dem Namen; bei bestehenden Konten bleibt eine
@@ -2144,7 +2144,7 @@ accForm.addEventListener('submit', e => {
     accounts.push(acc);
   }
   persistAccounts();
-  $('#dlg-account').close();
+  closeSheet($('#dlg-account'), true);
   renderAll();
   if (accountForContract && $('#dlg-form').open) {
     formDirty = true;
@@ -2165,7 +2165,7 @@ $('#account-delete').addEventListener('click', async () => {
   accounts = accounts.filter(a => a.id !== acc.id);
   persist();
   persistAccounts();
-  $('#dlg-account').close();
+  closeSheet($('#dlg-account'), true);
   renderAll();
   toast('Konto gelöscht');
 });
@@ -2394,13 +2394,22 @@ function applyTheme() {
   }
 }
 // Schalter in der Kopfzeile: wechselt zwischen Hell und Dunkel
+let themeTimer;
 $('#btn-theme').addEventListener('click', () => {
-  const root = document.documentElement;
-  root.classList.add('theme-fade');
-  settings.theme = isDark() ? 'light' : 'dark';
-  saveSettings();
-  applyTheme();
-  setTimeout(() => root.classList.remove('theme-fade'), 350);
+  const sw = $('#btn-theme');
+  const toDark = sw.getAttribute('aria-checked') !== 'true';
+  // Zuerst gleitet der Knopf (flüssig, ohne dass gleichzeitig die ganze Seite umgefärbt wird) …
+  sw.setAttribute('aria-checked', String(toDark));
+  clearTimeout(themeTimer);
+  themeTimer = setTimeout(() => {
+    // … danach wechselt das Farbschema mit sanfter Überblendung
+    const root = document.documentElement;
+    root.classList.add('theme-fade');
+    settings.theme = toDark ? 'dark' : 'light';
+    saveSettings();
+    applyTheme();
+    setTimeout(() => root.classList.remove('theme-fade'), 350);
+  }, 380);
 });
 // Solange nichts gewählt ist, folgt die App dem Handy
 darkQuery.addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
@@ -2566,6 +2575,9 @@ function enableSwipeToClose(dlg) {
 enableSwipeToClose($('#dlg-form'));
 enableSwipeToClose($('#dlg-search'));
 enableSwipeToClose($('#dlg-deadlines'));
+enableSwipeToClose($('#dlg-account'));
+// Logo oben links → Übersicht
+$('#brand-home').addEventListener('click', () => showView('dashboard'));
 
 /* ---------- Toast ---------- */
 

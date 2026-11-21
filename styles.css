@@ -416,8 +416,8 @@ dialog.viewer::backdrop { background: #0b1222; }
 
 /* Vertragsansicht per Wischen schließen */
 .sheet-body, .viewer-body { overscroll-behavior: contain; }
-#dlg-deadlines, #dlg-search, #dlg-form { transition: transform .22s ease; }
-#dlg-deadlines.dragging, #dlg-search.dragging, #dlg-form.dragging { transition: none; }
+#dlg-deadlines, #dlg-search, #dlg-form, #dlg-account { transition: transform .3s cubic-bezier(.4, 0, .6, 1); }
+#dlg-deadlines.dragging, #dlg-search.dragging, #dlg-form.dragging, #dlg-account.dragging { transition: none; }
 .grabber { display: none; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto -4px; flex-shrink: 0; }
 @media (pointer: coarse) { .grabber { display: block; } }
 
@@ -493,8 +493,14 @@ dialog.sheet.bottom-sheet {
   box-shadow: 0 -12px 40px rgba(0, 0, 0, .3);
 }
 dialog.bottom-sheet .grabber { display: block; }
-dialog.bottom-sheet[open] { animation: sheet-up .32s cubic-bezier(.2, .85, .25, 1); }
-@keyframes sheet-up { from { transform: translateY(100%); } }
+/* Hochfahren: eigene Ebene (GPU), weiche Kurve, Hintergrund blendet mit ein */
+dialog.bottom-sheet { will-change: transform; backface-visibility: hidden; }
+dialog.bottom-sheet[open] { animation: sheet-up .42s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes sheet-up { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
+dialog.bottom-sheet[open]::backdrop { animation: backdrop-in .35s ease both; }
+dialog.bottom-sheet.closing::backdrop { animation: backdrop-out .3s ease both; }
+@keyframes backdrop-in { from { opacity: 0; } }
+@keyframes backdrop-out { to { opacity: 0; } }
 dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 .search-field { position: relative; margin-bottom: 14px; }
 .search-field svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 19px; height: 19px; color: var(--muted); pointer-events: none; }
@@ -539,7 +545,7 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .account-card.open .account-head { border-bottom-color: var(--mint); }
 .account-head.muted { background: var(--account-head-muted); }
 .account-card.open .account-head.muted { border-bottom-color: var(--muted); }
-.account-head .item-title { color: #fff; font-size: 1.05rem; white-space: normal; overflow-wrap: anywhere; }
+.account-head .item-title { color: #fff; font-size: 1.05rem; white-space: normal; overflow-wrap: break-word; hyphens: auto; }
 .account-head .item-sub, .account-head .item-interval { color: rgba(255, 255, 255, .72); }
 .account-head .price { color: var(--mint); font-size: 1.15rem; }
 .account-head:hover .item-title { color: var(--mint); }
@@ -829,3 +835,15 @@ button.bar-row:focus-visible { outline: 2px solid var(--accent-text); outline-of
 .logo-menu .lm-check { width: 16px; height: 16px; color: var(--accent-text); visibility: hidden; }
 .logo-menu button[aria-checked=true] { background: var(--surface-2); }
 .logo-menu button[aria-checked=true] .lm-check { visibility: visible; }
+
+/* Konto-Fenster: von unten, so hoch wie der Inhalt */
+dialog.sheet.bottom-sheet#dlg-account { height: fit-content; max-height: 92dvh; }
+#dlg-account .sheet-body { flex: 0 1 auto; }
+/* Logo oben links: zurück zur Übersicht */
+.brand-home { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 14px; flex-shrink: 0; display: flex; }
+.brand-home:active .brand-logo { transform: scale(.94); }
+.brand-home .brand-logo { transition: transform .12s ease; }
+.brand-home:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+/* Hell/Dunkel: Knopf gleitet langsam und flüssig */
+.theme-knob { transition: transform .45s cubic-bezier(.65, 0, .35, 1) !important; will-change: transform; }
+.theme-ico { transition: color .45s ease !important; }
