@@ -78,8 +78,10 @@
           <button type="button" class="chip" data-status="ended" aria-pressed="false">Beendet</button>
         </div>
         <div class="list-selects">
-          <select id="list-category" aria-label="Nach Kategorie filtern"><option value="">Kategorie</option></select>
-          <select id="list-account" aria-label="Nach Konto filtern"><option value="">Konto</option></select>
+          <label class="field"><span>Kategorie</span>
+            <select id="list-category" aria-label="Nach Kategorie filtern"><option value="">Alle</option></select></label>
+          <label class="field"><span>Konto</span>
+            <select id="list-account" aria-label="Nach Konto filtern"><option value="">Alle</option></select></label>
         </div>
         <div class="search-meta">
           <span><span id="list-count"></span><button type="button" class="link-btn list-reset" id="list-reset" hidden>Zurücksetzen</button></span>

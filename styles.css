@@ -499,7 +499,6 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .list-filters .chips { margin-bottom: 8px; }
 .list-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .list-selects select { min-height: 40px; padding: 6px 28px 6px 12px; font-size: .9rem; font-weight: 600; text-overflow: ellipsis; }
-.list-selects select.is-empty { color: var(--muted); font-weight: 500; }
 .list-selects select option { color: var(--text); }
 .list-reset { margin-left: 10px; }
 .sort-inline { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); cursor: pointer; }
@@ -509,3 +508,4 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
   color: var(--accent-text); font-weight: 700; font-size: .9rem; cursor: pointer; field-sizing: content;
 }
 .sort-inline select:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: 8px; }
+.list-selects .field > span { font-size: .8rem; }

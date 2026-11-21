@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -634,14 +634,14 @@ function refreshFilterOptions() {
     sel.value = values.includes(cur) ? cur : '';
   };
   fillSelect($('#filter-category'), cats);
-  fillSelect($('#list-category'), cats, 'Kategorie');
+  fillSelect($('#list-category'), cats);
 
   const allCats = [...new Set([...DEFAULT_CATEGORIES, ...cats])];
   $('#dl-categories').innerHTML = allCats.map(c => `<option value="${esc(c)}">`).join('');
   const accounts = [...new Set(contracts.map(c => c.account).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
   $('#dl-accounts').innerHTML = accounts.map(a => `<option value="${esc(a)}">`).join('');
   fillSelect($('#filter-account'), accounts);
-  fillSelect($('#list-account'), accounts, 'Konto');
+  fillSelect($('#list-account'), accounts);
 }
 
 $('#list-status').addEventListener('click', e => {
