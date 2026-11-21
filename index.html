@@ -277,7 +277,7 @@
               <li data-step="confirmed"><button type="button" class="step-btn" id="step-confirm"><span class="step-dot"></span><span class="step-label">Bestätigt</span><span class="step-date"></span></button></li>
               <li data-step="ended"><div class="step-btn static"><span class="step-dot"></span><span class="step-label">Ausgelaufen</span><span class="step-date"></span></div></li>
             </ol>
-            <p class="hint cancel-hint" data-cstate="none">Tippe auf <strong>Gekündigt</strong>, sobald du die Kündigung verschickt hast – der Vertrag wandert dann zu „Gekündigt“.</p>
+            <p class="hint cancel-hint" data-cstate="none">Tippe auf <strong>Gekündigt</strong>, sobald du die Kündigung verschickt hast – der Vertrag wandert dann zu „Gekündigt“. Erneutes Antippen nimmt einen Schritt wieder zurück.</p>
 
             <div class="cancel-panel" data-cstate="sent confirmed ended">
               <h3 class="panel-title">Kündigung</h3>
@@ -297,7 +297,6 @@
               <label class="field"><span>Vertragsende</span>
                 <input name="endDate" type="date"></label>
               <p class="hint span-2" id="cancel-end-hint"></p>
-              <div class="span-2"><button type="button" class="btn btn-link" id="cancel-undo">Kündigung zurücknehmen</button></div>
             </div>
 
             <p class="hint cancel-hint" id="cancel-wait" data-cstate="sent"></p>
@@ -306,7 +305,6 @@
               <h3 class="panel-title">Bestätigung</h3>
               <label class="field"><span>Bestätigt am</span>
                 <input name="cancelConfirmedAt" type="date"></label>
-              <div class="span-2"><button type="button" class="btn btn-link" id="confirm-undo">Bestätigung zurücknehmen</button></div>
             </div>
           </div>
         </fieldset>

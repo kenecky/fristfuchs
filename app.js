@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.21.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -1691,36 +1691,41 @@ function fillAutoEndDate() {
   const calc = d.cancelledAt ? endIfCancelledOn(d, parseISO(d.cancelledAt)) : null;
   if (calc) { form.elements.endDate.value = toISO(calc); endDateAuto = true; }
 }
-$('#step-cancel').addEventListener('click', () => {
-  if (form.elements.status.value !== 'active') { form.elements.cancelledAt.focus(); return; }
-  form.elements.status.value = 'cancelled';
-  form.elements.cancelledAt.value = toISO(today());
-  form.elements.cancelConfirmedAt.value = '';
-  endDateAuto = true;
-  fillAutoEndDate();
+// Schritte sind Schalter: antippen setzt sie, erneutes Antippen nimmt sie nach Rückfrage zurück
+$('#step-cancel').addEventListener('click', async () => {
+  if (form.elements.status.value !== 'active') {
+    const ok = await ask({
+      title: 'Kündigung zurücknehmen?',
+      message: form.elements.cancelConfirmedAt.value
+        ? 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung und die Bestätigung werden beim Speichern entfernt.'
+        : 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung werden beim Speichern entfernt.',
+      buttons: [{ label: 'Zurücknehmen', value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }],
+    });
+    if (!ok) return;
+    for (const f of ['cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate']) form.elements[f].value = '';
+    form.elements.status.value = 'active';
+  } else {
+    form.elements.status.value = 'cancelled';
+    form.elements.cancelledAt.value = toISO(today());
+    form.elements.cancelConfirmedAt.value = '';
+    endDateAuto = true;
+    fillAutoEndDate();
+  }
   formDirty = true;
   updateFormState();
 });
-$('#step-confirm').addEventListener('click', () => {
+$('#step-confirm').addEventListener('click', async () => {
   if (form.elements.status.value === 'active') return;
-  if (form.elements.cancelConfirmedAt.value) { form.elements.cancelConfirmedAt.focus(); return; }
-  form.elements.cancelConfirmedAt.value = toISO(today());
-  formDirty = true;
-  updateFormState();
-});
-$('#cancel-undo').addEventListener('click', async () => {
-  const ok = await ask({
-    title: 'Kündigung zurücknehmen?', message: 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung und eine eingetragene Bestätigung werden beim Speichern entfernt.',
-    buttons: [{ label: 'Zurücknehmen', value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }],
-  });
-  if (!ok) return;
-  for (const f of ['cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate']) form.elements[f].value = '';
-  form.elements.status.value = 'active';
-  formDirty = true;
-  updateFormState();
-});
-$('#confirm-undo').addEventListener('click', () => {
-  form.elements.cancelConfirmedAt.value = '';
+  if (form.elements.cancelConfirmedAt.value) {
+    const ok = await ask({
+      title: 'Bestätigung zurücknehmen?', message: 'Die Kündigung bleibt bestehen, gilt aber wieder als „Bestätigung ausstehend“.',
+      buttons: [{ label: 'Zurücknehmen', value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }],
+    });
+    if (!ok) return;
+    form.elements.cancelConfirmedAt.value = '';
+  } else {
+    form.elements.cancelConfirmedAt.value = toISO(today());
+  }
   formDirty = true;
   updateFormState();
 });
