@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.36.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -659,7 +659,6 @@ function itemHTML(c) {
       <span class="item-main">
         <span class="item-title">${esc(c.name)}</span>
         <span class="item-sub">${sub || '&nbsp;'}</span>
-        <span class="item-badge">${scheduleBadge(s)}</span>
       </span>
       <span class="item-side">
         <span class="price">${eur.format(currentAmount(c))}</span>
@@ -667,6 +666,7 @@ function itemHTML(c) {
         ${perMonth}
         ${next ? `<span class="item-next">ab ${fmtShort(next.from)}: ${eur.format(next.amount)}</span>` : ''}
       </span>
+      <span class="item-badge">${scheduleBadge(s)}</span>
     </button>`;
 }
 function emptyHTML(text, withButton = true) {
@@ -733,7 +733,7 @@ function renderDeadlines(withDeadline, due) {
     + group(`In den nächsten ${settings.warnDays} Tagen`, due.map(x => x.c))
     + group('Später', later.map(x => x.c));
   $('#deadlines-body').innerHTML = html || (contracts.length === 0
-    ? emptyHTML('Noch keine Verträge erfasst. Leg los – oder lade unter „Mehr“ Beispieldaten.')
+    ? emptyHTML('Noch keine Verträge erfasst. Leg los mit dem ＋ unten.')
     : emptyHTML('Keine anstehenden Fristen. Trage Abschlussdatum, Laufzeit und Kündigungsfrist ein, damit Fristen berechnet werden.', false));
 }
 
@@ -2826,12 +2826,8 @@ $('#import-file').addEventListener('change', e => {
   if (f) importJSON(f);
   e.target.value = '';
 });
-$('#btn-demo').addEventListener('click', async () => {
-  if (contracts.length && !(await ask({
-    title: 'Beispieldaten hinzufügen?', message: 'Die Beispielverträge werden zu deinen vorhandenen Verträgen hinzugefügt.',
-    icon: ICONS.plus, tone: 'neutral',
-    buttons: [{ label: 'Hinzufügen', value: true, kind: 'primary' }, { label: 'Abbrechen', value: false }],
-  }))) return;
+// Beispieldaten (ohne Knopf in der App – z. B. zum Ausprobieren über die Entwicklerkonsole)
+function loadDemoData() {
   contracts.push(...demoData());
   persist();
   syncAccountsFromContracts();
@@ -2845,23 +2841,7 @@ $('#btn-demo').addEventListener('click', async () => {
   for (const a of accounts) if (demoDetails[a.name] && !a.bank) Object.assign(a, demoDetails[a.name]);
   persistAccounts();
   renderAll();
-  toast('Beispieldaten geladen');
-});
-$('#btn-clear').addEventListener('click', async () => {
-  if (!contracts.length && !accounts.length) { toast('Keine Daten vorhanden.'); return; }
-  const ok = await confirmDelete('Alle Daten löschen?',
-    `Alle ${contracts.length} Verträge, ${accounts.length} Konten und alle Dokumente werden gelöscht. Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.`, 'Alles löschen');
-  if (!ok) return;
-  contracts = [];
-  accounts = [];
-  persist();
-  persistAccounts();
-  await docStore.clear().catch(() => {});
-  await loadDocCounts();
-  renderAll();
-  updateStorageInfo();
-  toast('Alle Daten gelöscht');
-});
+}
 
 /* ---------- Start ---------- */
 

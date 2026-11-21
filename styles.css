@@ -874,3 +874,13 @@ dialog.sheet.bottom-sheet#dlg-account { height: fit-content; max-height: 92dvh; 
 .autosave-note { color: var(--muted); font-size: .78rem; line-height: 1.25; }
 .autosave-note.flash { color: var(--ok); font-weight: 700; }
 @media (max-width: 560px) { .sheet-foot .autosave-note { flex: 1 1 40%; } .sheet-foot .btn-primary { flex: 0 0 auto; padding-inline: 22px; } }
+
+/* Kachel: Fristhinweis links bündig mit dem Logo, über die ganze Breite */
+.item > .item-badge { grid-column: 1 / -1; margin-top: 4px; }
+/* Plus unten in der Navi: Orange */
+.tabbar .fab {
+  background: linear-gradient(145deg, #fdba74 0%, #fb923c 45%, #f97316 100%); color: #1d2b4a;
+  box-shadow: 0 8px 22px rgba(249, 115, 22, .45), 0 2px 6px rgba(15, 23, 42, .25);
+}
+.tabbar .fab:hover { box-shadow: 0 10px 28px rgba(249, 115, 22, .55), 0 2px 6px rgba(15, 23, 42, .25); }
+.tabbar .fab:active { box-shadow: 0 4px 14px rgba(249, 115, 22, .4), 0 1px 3px rgba(15, 23, 42, .25); }
