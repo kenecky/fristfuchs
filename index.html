@@ -244,7 +244,7 @@
               <option value="weekly">wöchentlich</option>
             </select></label>
           <label class="field"><span>Zahlungskonto</span>
-            <input name="account" list="dl-accounts" placeholder="z. B. Girokonto Sparkasse"></label>
+            <select name="accountId"></select></label>
           <label class="field"><span>Zahlungsart</span>
             <select name="paymentMethod">
               <option value="">–</option>
@@ -398,7 +398,57 @@
   </dialog>
 
   <datalist id="dl-categories"></datalist>
-  <datalist id="dl-accounts"></datalist>
+  <datalist id="dl-banks"></datalist>
+
+  <!-- Konto anlegen / bearbeiten -->
+  <dialog id="dlg-account" class="sheet">
+    <form id="account-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="account-form-title">Neues Konto</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
+      </div>
+      <div class="sheet-body form-grid">
+        <fieldset>
+          <legend>Konto</legend>
+          <div class="field span-2 account-preview-row">
+            <span id="account-preview"></span>
+            <p class="hint" id="account-preview-hint">Das Logo der Bank wird automatisch ergänzt, wenn sie bekannt ist.</p>
+          </div>
+          <label class="field span-2"><span>Name *</span>
+            <input name="name" required maxlength="60" placeholder="z. B. Girokonto Sparkasse" autocomplete="off"></label>
+          <label class="field"><span>Art</span>
+            <select name="type">
+              <option value="giro">Girokonto</option>
+              <option value="tagesgeld">Tagesgeld</option>
+              <option value="kredit">Kreditkarte</option>
+              <option value="paypal">PayPal</option>
+              <option value="sonstiges">Sonstiges</option>
+            </select></label>
+          <label class="field"><span>Bank / Anbieter</span>
+            <input name="bank" list="dl-banks" placeholder="z. B. Sparkasse, DKB, ING" autocomplete="off"></label>
+          <div class="field span-2" data-show-type="giro tagesgeld sonstiges"><span>IBAN</span>
+            <div class="iban-row">
+              <input name="iban" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="DE00 0000 0000 0000 0000 00">
+              <button type="button" class="icon-btn iban-copy" id="iban-copy" aria-label="IBAN kopieren" title="IBAN kopieren" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button>
+            </div>
+            <p class="hint" id="iban-hint"></p>
+          </div>
+          <label class="field" data-show-type="kredit"><span>Karte (letzte 4 Ziffern)</span>
+            <input name="cardLast4" inputmode="numeric" maxlength="4" placeholder="1234" autocomplete="off"></label>
+          <label class="field span-2" data-show-type="paypal"><span>PayPal-E-Mail</span>
+            <input name="email" type="email" placeholder="name@example.com" autocomplete="off"></label>
+          <label class="field span-2"><span>Notizen</span>
+            <textarea name="notes" rows="2"></textarea></label>
+        </fieldset>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" class="btn btn-danger" id="account-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" popover="manual"></div>
 

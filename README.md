@@ -6,7 +6,7 @@ Eine installierbare Web-App (PWA), die alle Abos und Verträge an einem Ort zeig
 
 - **Übersicht**: Kosten pro Monat und Jahr, Zahl der aktiven Verträge, anstehende Kündigungsfristen und Kosten nach Kategorie
 - **Verträge**: Suche, Filter nach Status und Kategorie, Sortierung nach Frist oder Kosten
-- **Konten**: Monatssumme je Zahlungskonto (Girokonto, Kreditkarte, PayPal …)
+- **Konten**: eigene Kontenverwaltung mit Art, Bank, IBAN (mit Prüfziffer-Check, gekürzt angezeigt), Kartenendziffern bzw. PayPal-E-Mail; Monatssumme je Konto; Auswahl im Vertrag, Umbenennen wirkt auf alle Verträge
 - **Automatische Fristberechnung** aus Abschlussdatum, Mindestlaufzeit, Verlängerung und Kündigungsfrist (Tage, Wochen oder Monate)
 - Farbliche Warnung: rot ab 7 Tagen vor der Frist, gelb innerhalb der Vorwarnzeit (einstellbar, Standard 30 Tage)
 - **Erinnerungen**: Browser-Benachrichtigung beim Öffnen der App sowie Export als Kalendertermin (.ics, mit Alarm 14 und 3 Tage vorher), einzeln oder alle Fristen zusammen

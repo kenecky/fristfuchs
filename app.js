@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.15.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -38,6 +38,80 @@ let contracts = safeGet(STORAGE_KEY, []);
 let settings = Object.assign({ warnDays: 30, theme: 'system', autoLogos: true }, safeGet(SETTINGS_KEY, {}));
 
 function persist() { safeSet(STORAGE_KEY, contracts); }
+
+/* ---------- Konten ---------- */
+
+const ACCOUNTS_KEY = 'vw.accounts.v1';
+const ACCOUNT_TYPES = { giro: 'Girokonto', tagesgeld: 'Tagesgeld', kredit: 'Kreditkarte', paypal: 'PayPal', sonstiges: 'Sonstiges' };
+const BANKS = ['Sparkasse', 'Volksbank', 'Raiffeisenbank', 'Deutsche Bank', 'Commerzbank', 'Postbank', 'DKB', 'ING', 'N26', 'comdirect',
+  'Consorsbank', 'Targobank', 'HypoVereinsbank', 'Santander', 'Sparda-Bank', 'PSD Bank', 'C24', 'Revolut', 'Trade Republic',
+  'American Express', 'Barclays', 'Hanseatic Bank', 'Advanzia', 'PayPal'];
+let accounts = safeGet(ACCOUNTS_KEY, []);
+function persistAccounts() { safeSet(ACCOUNTS_KEY, accounts); }
+const accountById = id => (id ? accounts.find(a => a.id === id) : null);
+
+function guessAccountType(name) {
+  const n = name.toLowerCase();
+  if (/kredit|visa|master|amex|american express/.test(n)) return 'kredit';
+  if (/paypal/.test(n)) return 'paypal';
+  if (/tagesgeld|spar(konto|buch)/.test(n)) return 'tagesgeld';
+  return 'giro';
+}
+
+/**
+ * Verknüpft Verträge mit Konten. Verträge, die nur einen Kontonamen haben (ältere Daten,
+ * Import, Beispieldaten), bekommen ein passendes Konto – bei Bedarf wird es angelegt.
+ */
+function syncAccountsFromContracts() {
+  let changedContracts = false, changedAccounts = false;
+  for (const c of contracts) {
+    const linked = accountById(c.accountId);
+    if (linked) {
+      if (c.account !== linked.name) { c.account = linked.name; changedContracts = true; }
+      continue;
+    }
+    if (c.accountId) { c.accountId = ''; changedContracts = true; }
+    const name = String(c.account || '').trim();
+    if (!name) continue;
+    let acc = accounts.find(a => a.name.toLowerCase() === name.toLowerCase());
+    if (!acc) {
+      acc = { id: uid(), name, type: guessAccountType(name), bank: '', iban: '', cardLast4: '', email: '', notes: '', createdAt: new Date().toISOString() };
+      accounts.push(acc);
+      changedAccounts = true;
+    }
+    c.accountId = acc.id;
+    c.account = acc.name;
+    changedContracts = true;
+  }
+  if (changedAccounts) persistAccounts();
+  if (changedContracts) persist();
+}
+
+/* IBAN: Format, Prüfziffer (ISO 13616, Modulo 97), gekürzte Anzeige */
+const normIban = s => String(s || '').replace(/\s+/g, '').toUpperCase();
+function ibanValid(s) {
+  const i = normIban(s);
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(i)) return false;
+  if (i.startsWith('DE') && i.length !== 22) return false;
+  const digits = (i.slice(4) + i.slice(0, 4)).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const d of digits) rest = (rest * 10 + Number(d)) % 97;
+  return rest === 1;
+}
+const formatIban = s => normIban(s).replace(/(.{4})/g, '$1 ').trim();
+// Geschützte Leerzeichen, damit die gekürzte IBAN nicht umbricht
+const maskIban = s => { const i = normIban(s); return i ? `${i.slice(0, 4)}\u00a0••••\u00a0${i.slice(-4)}` : ''; };
+
+function accountDetails(a) {
+  const ref = a.type === 'kredit' ? (a.cardLast4 ? `•••• ${a.cardLast4}` : '')
+    : a.type === 'paypal' ? (a.email || '') : maskIban(a.iban);
+  // Doppelte Angaben (z. B. Art „PayPal“ und Anbieter „PayPal“) nur einmal zeigen
+  return [...new Set([ACCOUNT_TYPES[a.type] || '', a.bank, ref].filter(Boolean))].join(' · ');
+}
+function accountAvatar(a, extraClass = '') {
+  // Bank-Logo automatisch über den Banknamen (z. B. Sparkasse, DKB, PayPal)
+  return avatar({ name: a.name, provider: `${a.bank || ''} ${a.type === 'paypal' ? 'PayPal' : ''}`, website: '', logoMode: 'auto' }, extraClass);
+}
 function saveSettings() { safeSet(SETTINGS_KEY, settings); }
 
 /* ---------- Dokumente (IndexedDB) ---------- */
@@ -602,28 +676,51 @@ function renderSearch(force = false) {
 }
 
 function renderAccounts() {
-  const groups = {};
-  for (const c of contracts.filter(isCosting)) {
-    const k = c.account || 'Ohne Konto';
-    (groups[k] ||= []).push(c);
-  }
-  const entries = Object.entries(groups)
-    .map(([k, list]) => [k, list, list.reduce((s, c) => s + monthlyCost(c), 0)])
-    .sort((a, b) => b[2] - a[2]);
+  const costing = contracts.filter(isCosting);
+  const sumOf = list => list.reduce((s, c) => s + monthlyCost(c), 0);
+  const rows = accounts
+    .map(a => { const list = costing.filter(c => c.accountId === a.id); return { a, list, sum: sumOf(list) }; })
+    .sort((x, y) => y.sum - x.sum || x.a.name.localeCompare(y.a.name, 'de'));
+  const unassigned = costing.filter(c => !accountById(c.accountId));
 
-  $('#accounts').innerHTML = entries.length
-    ? entries.map(([k, list, sum]) => `
-        <div class="card">
-          <div class="detail-hero" style="margin-bottom:10px">
-            <div class="item-main" style="flex:1">
-              <div class="item-title">${esc(k)}</div>
-              <div class="item-sub">${list.length} ${list.length === 1 ? 'Vertrag' : 'Verträge'} · ${eur.format(sum * 12)} pro Jahr</div>
-            </div>
-            <div class="price">${eur.format(sum)}<small>/Monat</small></div>
-          </div>
-          <div class="list">${list.sort((a, b) => monthlyCost(b) - monthlyCost(a)).map(itemHTML).join('')}</div>
-        </div>`).join('')
-    : emptyHTML('Noch keine Verträge erfasst.');
+  const card = (head, list) => `
+    <div class="card account-card">
+      ${head}
+      ${list.length
+        ? `<div class="list">${list.sort((a, b) => monthlyCost(b) - monthlyCost(a)).map(itemHTML).join('')}</div>`
+        : '<p class="hint account-empty">Keine laufenden Verträge über dieses Konto.</p>'}
+    </div>`;
+  const countLine = (list, sum) => list.length
+    ? `${list.length}\u00a0${list.length === 1 ? 'Vertrag' : 'Verträge'} · ${eur.format(sum * 12)}\u00a0pro\u00a0Jahr` : 'Noch keine Verträge';
+
+  const html = rows.map(({ a, list, sum }) => card(`
+      <button type="button" class="account-head" data-account="${esc(a.id)}" aria-label="Konto ${esc(a.name)} bearbeiten">
+        ${accountAvatar(a)}
+        <span class="item-main">
+          <span class="item-title">${esc(a.name)}</span>
+          <span class="item-sub">${esc(accountDetails(a)) || 'Details ergänzen …'}</span>
+          <span class="item-sub">${countLine(list, sum)}</span>
+        </span>
+        <span class="item-side">
+          <span class="price">${eur.format(sum)}</span>
+          <span class="item-interval">pro Monat</span>
+        </span>
+      </button>`, list)).join('')
+    + (unassigned.length ? card(`
+      <div class="account-head static">
+        <span class="avatar" style="background:var(--surface-2);color:var(--muted)" aria-hidden="true">?</span>
+        <span class="item-main">
+          <span class="item-title">Ohne Konto</span>
+          <span class="item-sub">${countLine(unassigned, sumOf(unassigned))}</span>
+        </span>
+        <span class="item-side">
+          <span class="price">${eur.format(sumOf(unassigned))}</span>
+          <span class="item-interval">pro Monat</span>
+        </span>
+      </div>`, unassigned) : '');
+
+  $('#accounts').innerHTML = (html || '<div class="empty">Noch keine Konten angelegt.</div>')
+    + '<button type="button" class="btn doc-add" id="account-add">＋ Konto hinzufügen</button>';
 }
 
 function refreshFilterOptions() {
@@ -638,10 +735,9 @@ function refreshFilterOptions() {
 
   const allCats = [...new Set([...DEFAULT_CATEGORIES, ...cats])];
   $('#dl-categories').innerHTML = allCats.map(c => `<option value="${esc(c)}">`).join('');
-  const accounts = [...new Set(contracts.map(c => c.account).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
-  $('#dl-accounts').innerHTML = accounts.map(a => `<option value="${esc(a)}">`).join('');
-  fillSelect($('#filter-account'), accounts);
-  fillSelect($('#list-account'), accounts);
+  const accountNames = accounts.map(a => a.name).sort((a, b) => a.localeCompare(b, 'de'));
+  fillSelect($('#filter-account'), accountNames);
+  fillSelect($('#list-account'), accountNames);
 }
 
 $('#list-status').addEventListener('click', e => {
@@ -805,7 +901,7 @@ function openDetail(id) {
     ['Betrag', `${eur.format(Number(c.amount) || 0)} ${iv.label}`],
     ['Monatlich', eur.format(monthlyCost(c))],
     ['Jährlich', eur.format(monthlyCost(c) * 12)],
-    ['Zahlungskonto', esc(c.account)],
+    ['Zahlungskonto', c.account ? esc(c.account) + (accountById(c.accountId) && accountDetails(accountById(c.accountId)) ? `<br><span class="item-sub">${esc(accountDetails(accountById(c.accountId)))}</span>` : '') : ''],
     ['Zahlungsart', esc(c.paymentMethod)],
     ['Abschluss', c.startDate ? fmtISO(c.startDate) : ''],
     ['Mindestlaufzeit', c.minTermMonths ? `${c.minTermMonths} Monate` : 'keine'],
@@ -1340,7 +1436,7 @@ window.addEventListener('resize', () => {
 /* ---------- Formular ---------- */
 
 const form = $('#contract-form');
-const FIELDS = ['name', 'provider', 'category', 'status', 'contractNo', 'amount', 'interval', 'account', 'paymentMethod',
+const FIELDS = ['name', 'provider', 'category', 'status', 'contractNo', 'amount', 'interval', 'accountId', 'paymentMethod',
   'startDate', 'minTermMonths', 'renewalMonths', 'noticeValue', 'noticeUnit', 'cancelledAt', 'endDate', 'website', 'cancelContact', 'notes',
   'logoMode', 'logo'];
 let editingId = null;
@@ -1351,6 +1447,7 @@ function openForm(id = null) {
     status: 'active', interval: 'monthly', noticeUnit: 'months', startDate: toISO(today()),
   };
   form.reset();
+  fillAccountSelect();
   for (const f of FIELDS) form.elements[f].value = c[f] ?? '';
   if (!form.elements.noticeUnit.value) form.elements.noticeUnit.value = 'months';
   if (!form.elements.interval.value) form.elements.interval.value = 'monthly';
@@ -1373,6 +1470,8 @@ function readForm() {
   if (data.status === 'active') { data.cancelledAt = ''; data.endDate = ''; }
   if (data.logoMode !== 'custom') data.logo = '';
   else data.logoV = 2;
+  if (!accountById(data.accountId)) data.accountId = '';
+  data.account = accountById(data.accountId)?.name || '';
   return data;
 }
 
@@ -1548,6 +1647,134 @@ form.addEventListener('submit', e => {
   toast(editingId ? 'Änderungen gespeichert' : 'Vertrag angelegt');
 });
 
+/* ---------- Konto anlegen / bearbeiten ---------- */
+
+const accForm = $('#account-form');
+let editingAccountId = null;
+let accountForContract = false;   // aus dem Vertragsformular heraus angelegt → dort auswählen
+
+function fillAccountSelect(selected) {
+  const sel = form.elements.accountId;
+  const cur = selected ?? sel.value;
+  const sorted = [...accounts].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  sel.innerHTML = '<option value="">– kein Konto –</option>'
+    + sorted.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')
+    + '<option value="__new__">＋ Neues Konto anlegen …</option>';
+  sel.value = accountById(cur) ? cur : '';
+  sel.dataset.prev = sel.value;
+}
+form.elements.accountId.addEventListener('change', e => {
+  const sel = e.target;
+  if (sel.value === '__new__') {
+    sel.value = sel.dataset.prev || '';
+    openAccountForm(null, true);
+    return;
+  }
+  sel.dataset.prev = sel.value;
+  // Zahlungsart passend zur Kontoart vorschlagen, wenn noch leer
+  const acc = accountById(sel.value);
+  if (acc && !form.elements.paymentMethod.value) {
+    form.elements.paymentMethod.value = { kredit: 'Kreditkarte', paypal: 'PayPal', giro: 'Lastschrift' }[acc.type] || '';
+  }
+});
+
+function openAccountForm(id = null, forContract = false) {
+  editingAccountId = id;
+  accountForContract = forContract;
+  const a = accountById(id) || { type: 'giro' };
+  accForm.reset();
+  $('#dl-banks').innerHTML = BANKS.map(b => `<option value="${esc(b)}">`).join('');
+  for (const f of ['name', 'type', 'bank', 'iban', 'cardLast4', 'email', 'notes']) accForm.elements[f].value = a[f] ?? '';
+  accForm.elements.iban.value = a.iban ? formatIban(a.iban) : '';
+  $('#account-form-title').textContent = id ? 'Konto bearbeiten' : 'Neues Konto';
+  $('#account-delete').hidden = !id;
+  updateAccountForm();
+  $('#dlg-account').showModal();
+  if (!id) accForm.elements.name.focus();
+}
+
+function updateAccountForm() {
+  const type = accForm.elements.type.value;
+  for (const el of $$('[data-show-type]', accForm)) el.hidden = !el.dataset.showType.split(' ').includes(type);
+  const raw = accForm.elements.iban.value;
+  const hint = $('#iban-hint');
+  if (!normIban(raw)) { hint.textContent = ''; hint.className = 'hint'; }
+  else if (ibanValid(raw)) { hint.textContent = '✓ Gültige IBAN'; hint.className = 'hint ok-text'; }
+  else { hint.textContent = normIban(raw).length < 15 ? 'IBAN unvollständig' : 'Die Prüfziffer stimmt nicht – bitte die IBAN prüfen.'; hint.className = 'hint danger-text'; }
+  $('#iban-copy').hidden = !ibanValid(raw);
+  $('#account-preview').innerHTML = accountAvatar({
+    name: accForm.elements.name.value.trim() || '?', bank: accForm.elements.bank.value, type,
+  });
+}
+accForm.addEventListener('input', updateAccountForm);
+accForm.addEventListener('change', updateAccountForm);
+accForm.elements.iban.addEventListener('blur', e => { if (normIban(e.target.value)) e.target.value = formatIban(e.target.value); });
+accForm.elements.cardLast4.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
+$('#iban-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(formatIban(accForm.elements.iban.value)); toast('IBAN kopiert'); }
+  catch { toast('Kopieren nicht möglich'); }
+});
+
+accForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = f => accForm.elements[f].value.trim();
+  const name = v('name');
+  if (!name) { toast('Bitte einen Namen eingeben.'); accForm.elements.name.focus(); return; }
+  if (accounts.some(a => a.id !== editingAccountId && a.name.toLowerCase() === name.toLowerCase())) {
+    toast('Ein Konto mit diesem Namen gibt es schon.'); accForm.elements.name.focus(); return;
+  }
+  const type = v('type');
+  const iban = ['giro', 'tagesgeld', 'sonstiges'].includes(type) ? normIban(v('iban')) : '';
+  if (iban && !ibanValid(iban)) { toast('Die IBAN ist nicht gültig.'); accForm.elements.iban.focus(); return; }
+  const card = type === 'kredit' ? v('cardLast4') : '';
+  if (card && !/^\d{4}$/.test(card)) { toast('Bitte genau 4 Ziffern der Karte eingeben.'); accForm.elements.cardLast4.focus(); return; }
+  const data = { name, type, bank: v('bank'), iban, cardLast4: card, email: type === 'paypal' ? v('email') : '', notes: v('notes') };
+
+  let acc;
+  if (editingAccountId) {
+    acc = accountById(editingAccountId);
+    Object.assign(acc, data, { updatedAt: new Date().toISOString() });
+    // Umbenennen: Namen bei allen zugehörigen Verträgen nachziehen
+    for (const c of contracts) if (c.accountId === acc.id) c.account = acc.name;
+    persist();
+  } else {
+    acc = { id: uid(), ...data, createdAt: new Date().toISOString() };
+    accounts.push(acc);
+  }
+  persistAccounts();
+  $('#dlg-account').close();
+  renderAll();
+  if (accountForContract && $('#dlg-form').open) {
+    fillAccountSelect(acc.id);
+    form.elements.accountId.dispatchEvent(new Event('change'));
+  }
+  if ($('#dlg-detail').open && currentId) openDetail(currentId);
+  toast(editingAccountId ? 'Konto gespeichert' : 'Konto angelegt');
+});
+
+$('#account-delete').addEventListener('click', async () => {
+  const acc = accountById(editingAccountId);
+  if (!acc) return;
+  const n = contracts.filter(c => c.accountId === acc.id).length;
+  const ok = await confirmDelete('Konto löschen?',
+    `„${acc.name}“ wird gelöscht.${n ? ` ${n === 1 ? 'Der zugeordnete Vertrag bleibt' : `Die ${n} zugeordneten Verträge bleiben`} erhalten, aber ohne Konto.` : ''}`);
+  if (!ok) return;
+  for (const c of contracts) if (c.accountId === acc.id) { c.accountId = ''; c.account = ''; }
+  accounts = accounts.filter(a => a.id !== acc.id);
+  persist();
+  persistAccounts();
+  $('#dlg-account').close();
+  renderAll();
+  toast('Konto gelöscht');
+});
+
+// Konten-Seite: Konto antippen bzw. neues Konto
+$('#accounts').addEventListener('click', e => {
+  const head = e.target.closest('[data-account]');
+  if (head) { openAccountForm(head.dataset.account); return; }
+  if (e.target.closest('#account-add')) openAccountForm();
+});
+
 function uid() {
   return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 }
@@ -1596,14 +1823,14 @@ async function exportJSON() {
   try {
     documents = (await docStore.all()).map(({ data, ...meta }) => ({ ...meta, data: bufToB64(data) }));
   } catch {}
-  const payload = { app: 'fristfuchs', version: 2, exportedAt: new Date().toISOString(), contracts, documents };
+  const payload = { app: 'fristfuchs', version: 3, exportedAt: new Date().toISOString(), contracts, accounts, documents };
   download(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `fristfuchs-backup-${toISO(today())}.json`);
 }
 
 function exportCSV() {
   const cols = [['Name', 'name'], ['Anbieter', 'provider'], ['Kategorie', 'category'], ['Status', c => STATUS[c.status]],
     ['Betrag', c => String(c.amount).replace('.', ',')], ['Intervall', c => (INTERVALS[c.interval] || {}).label],
-    ['Monatlich', c => monthlyCost(c).toFixed(2).replace('.', ',')], ['Konto', 'account'], ['Zahlungsart', 'paymentMethod'],
+    ['Monatlich', c => monthlyCost(c).toFixed(2).replace('.', ',')], ['Konto', 'account'], ['IBAN', c => formatIban(accountById(c.accountId)?.iban || '')], ['Zahlungsart', 'paymentMethod'],
     ['Abschluss', 'startDate'], ['Mindestlaufzeit (Monate)', 'minTermMonths'], ['Verlängerung (Monate)', 'renewalMonths'],
     ['Kündigungsfrist', noticeText], ['Kündigen bis', c => { const s = schedule(c); return s.kind === 'deadline' ? toISO(s.deadline) : ''; }],
     ['Gekündigt am', 'cancelledAt'], ['Vertragsende', 'endDate'], ['Vertragsnr.', 'contractNo'], ['Website', 'website'],
@@ -1637,14 +1864,21 @@ async function importJSON(file) {
       if (!mode) return;
     }
     const replace = mode === 'replace';
+    const importedAccounts = Array.isArray(data.accounts) ? data.accounts.filter(a => a && a.id && a.name) : [];
     if (replace) {
       contracts = clean;
+      accounts = importedAccounts;
       await docStore.clear().catch(() => {});
     } else {
       const map = new Map(contracts.map(c => [c.id, c]));
       for (const c of clean) map.set(c.id, c);
       contracts = [...map.values()];
+      const accMap = new Map(accounts.map(a => [a.id, a]));
+      for (const a of importedAccounts) accMap.set(a.id, a);
+      accounts = [...accMap.values()];
     }
+    persistAccounts();
+    syncAccountsFromContracts();
     persist();
     const ids = new Set(contracts.map(c => c.id));
     const docs = Array.isArray(data.documents) ? data.documents.filter(d => d && d.id && d.data && ids.has(d.contractId)) : [];
@@ -1997,16 +2231,28 @@ $('#btn-demo').addEventListener('click', async () => {
   }))) return;
   contracts.push(...demoData());
   persist();
+  syncAccountsFromContracts();
+  // Beispielkonten mit Bank, IBAN bzw. Karte ausstatten (gültige Muster-IBANs)
+  const demoDetails = {
+    'Girokonto Sparkasse': { type: 'giro', bank: 'Sparkasse', iban: 'DE89370400440532013000' },
+    'Gemeinschaftskonto': { type: 'giro', bank: 'DKB', iban: 'DE45120300001234567890' },
+    'Kreditkarte Visa': { type: 'kredit', bank: 'Visa', cardLast4: '4821' },
+    'PayPal': { type: 'paypal', bank: 'PayPal', email: 'name@example.com' },
+  };
+  for (const a of accounts) if (demoDetails[a.name] && !a.bank) Object.assign(a, demoDetails[a.name]);
+  persistAccounts();
   renderAll();
   toast('Beispieldaten geladen');
 });
 $('#btn-clear').addEventListener('click', async () => {
-  if (!contracts.length) { toast('Keine Daten vorhanden.'); return; }
+  if (!contracts.length && !accounts.length) { toast('Keine Daten vorhanden.'); return; }
   const ok = await confirmDelete('Alle Daten löschen?',
-    `Alle ${contracts.length} Verträge und ihre Dokumente werden gelöscht. Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.`, 'Alles löschen');
+    `Alle ${contracts.length} Verträge, ${accounts.length} Konten und alle Dokumente werden gelöscht. Das kann nicht rückgängig gemacht werden.\n\nTipp: Vorher ein Backup exportieren.`, 'Alles löschen');
   if (!ok) return;
   contracts = [];
+  accounts = [];
   persist();
+  persistAccounts();
   await docStore.clear().catch(() => {});
   await loadDocCounts();
   renderAll();
@@ -2022,6 +2268,8 @@ $('#set-theme').value = settings.theme;
 $('#set-auto-logos').checked = settings.autoLogos;
 $('#app-version').textContent = APP_VERSION;
 updateNotifyState();
+// Bisherige Kontonamen einmalig als Konten übernehmen
+syncAccountsFromContracts();
 renderAll();
 loadDocCounts().then(renderAll);
 migrateCustomLogos();

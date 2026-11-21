@@ -509,3 +509,27 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 }
 .sort-inline select:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: 8px; }
 .list-selects .field > span { font-size: .8rem; }
+/* Konten */
+.account-card { padding: 12px; }
+.account-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 2px 12px;
+  width: 100%; padding: 4px 4px 12px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer;
+  border-radius: 12px;
+}
+.account-head:not(.static):hover .item-title { color: var(--accent-text); }
+.account-head.static { cursor: default; }
+.account-head .avatar { width: 46px; height: 46px; }
+.account-head .item-sub + .item-sub { font-size: .8rem; }
+.account-empty { margin: 0 4px 4px; }
+.account-card > .list { gap: 8px; }
+#account-add { margin-top: 4px; }
+.iban-row { display: flex; gap: 8px; }
+.iban-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.ok-text { color: var(--ok); font-weight: 600; }
+.danger-text { color: var(--danger); font-weight: 600; }
+.account-preview-row { flex-direction: row; align-items: center; gap: 12px; }
+.account-preview-row .avatar { width: 52px; height: 52px; font-size: 1.25rem; }
+.account-preview-row .hint { margin: 0; }
+.account-head .item-sub { white-space: normal; overflow: visible; }
+.iban-copy { width: 42px; height: 42px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 10px; display: grid; place-items: center; color: var(--accent-text); }
+.iban-copy svg { width: 19px; height: 19px; }
