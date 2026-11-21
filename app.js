@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -454,17 +454,20 @@ function itemHTML(c) {
   const n = docCounts.get(c.id) || 0;
   const clip = n ? `<span class="clip" title="${n} ${n === 1 ? 'Dokument' : 'Dokumente'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7.1"/></svg>${n}</span>` : '';
   const sub = [[c.category, c.account].filter(Boolean).map(esc).join(' · ') || esc(c.provider || ''), clip].filter(Boolean).join(' · ');
-  const perMonth = c.interval !== 'monthly' ? `<small> ≈ ${eur.format(monthlyCost(c))}/Monat</small>` : '';
+  // Bei nicht-monatlicher Zahlung zusätzlich den Monatswert zeigen
+  const perMonth = c.interval !== 'monthly' ? `<span class="item-permonth">≈ ${eur.format(monthlyCost(c))}/Monat</span>` : '';
   return `
     <button type="button" class="item" data-id="${esc(c.id)}">
       ${avatar(c)}
       <span class="item-main">
         <span class="item-title">${esc(c.name)}</span>
         <span class="item-sub">${sub || '&nbsp;'}</span>
+        <span class="item-badge">${scheduleBadge(s)}</span>
       </span>
       <span class="item-side">
-        <span class="price">${eur.format(Number(c.amount) || 0)}<small>/${iv.short}</small>${perMonth}</span>
-        ${scheduleBadge(s)}
+        <span class="price">${eur.format(Number(c.amount) || 0)}</span>
+        <span class="item-interval">${iv.label}</span>
+        ${perMonth}
       </span>
     </button>`;
 }
@@ -537,14 +540,40 @@ function sortContracts(list, sort = 'deadline') {
   return list.sort(sorters[sort] || sorters.deadline);
 }
 
-// Seite „Verträge“: alle Verträge, nach Status gruppiert, je nach Kündigungsfrist sortiert
+// Seite „Verträge“: Filter und Sortierung, nach Status gruppiert
+const LIST_DEFAULTS = { status: 'all', category: '', account: '', sort: 'deadline' };
+function listFilters() { return { ...LIST_DEFAULTS, ...(settings.list || {}) }; }
+function setListFilter(key, value) {
+  settings.list = { ...listFilters(), [key]: value };
+  saveSettings();
+  renderContracts();
+}
+
 function renderContracts() {
+  const f = listFilters();
+  $('.list-filters').hidden = !contracts.length;
+  for (const chip of $$('#list-status [data-status]')) chip.setAttribute('aria-pressed', String(chip.dataset.status === f.status));
+  for (const [sel, val] of [['#list-category', f.category], ['#list-account', f.account], ['#list-sort', f.sort]]) {
+    const el = $(sel);
+    if ([...el.options].some(o => o.value === val)) el.value = val;
+    el.classList.toggle('is-empty', !el.value);   // „Kategorie“/„Konto“ gedämpft, solange nichts gewählt
+  }
   if (!contracts.length) { $('#contracts').innerHTML = emptyHTML('Noch keine Verträge erfasst.'); return; }
+
+  const matches = contracts.filter(c =>
+    (f.status === 'all' || c.status === f.status) &&
+    (!f.category || c.category === f.category) &&
+    (!f.account || (c.account || '') === f.account));
   const groups = [['active', 'Aktiv'], ['cancelled', 'Gekündigt'], ['ended', 'Beendet']]
-    .map(([st, label]) => [label, sortContracts(contracts.filter(c => c.status === st))])
+    .map(([st, label]) => [label, sortContracts(matches.filter(c => c.status === st), f.sort)])
     .filter(([, list]) => list.length);
-  $('#contracts').innerHTML = groups.map(([label, list]) =>
-    `<h2 class="list-group-title">${label} · ${list.length}</h2>${list.map(itemHTML).join('')}`).join('');
+
+  const filtered = JSON.stringify(f) !== JSON.stringify(LIST_DEFAULTS);
+  $('#list-reset').hidden = !filtered;
+  $('#list-count').textContent = `${matches.length} ${matches.length === 1 ? 'Vertrag' : 'Verträge'}`;
+  $('#contracts').innerHTML = groups.length
+    ? groups.map(([label, list]) => `<h2 class="list-group-title">${label} · ${list.length}</h2>${list.map(itemHTML).join('')}`).join('')
+    : '<div class="empty">Keine Verträge für diese Filter.</div>';
 }
 
 // Suchfenster: Treffer nach Suchbegriff und Filtern
@@ -599,19 +628,30 @@ function renderAccounts() {
 
 function refreshFilterOptions() {
   const cats = [...new Set(contracts.map(c => c.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
-  const fillSelect = (sel, values) => {
+  const fillSelect = (sel, values, allLabel = 'Alle') => {
     const cur = sel.value;
-    sel.innerHTML = '<option value="">Alle</option>' + values.map(v => `<option>${esc(v)}</option>`).join('');
+    sel.innerHTML = `<option value="">${allLabel}</option>` + values.map(v => `<option>${esc(v)}</option>`).join('');
     sel.value = values.includes(cur) ? cur : '';
   };
   fillSelect($('#filter-category'), cats);
+  fillSelect($('#list-category'), cats, 'Kategorie');
 
   const allCats = [...new Set([...DEFAULT_CATEGORIES, ...cats])];
   $('#dl-categories').innerHTML = allCats.map(c => `<option value="${esc(c)}">`).join('');
   const accounts = [...new Set(contracts.map(c => c.account).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
   $('#dl-accounts').innerHTML = accounts.map(a => `<option value="${esc(a)}">`).join('');
   fillSelect($('#filter-account'), accounts);
+  fillSelect($('#list-account'), accounts, 'Konto');
 }
+
+$('#list-status').addEventListener('click', e => {
+  const chip = e.target.closest('[data-status]');
+  if (chip) setListFilter('status', chip.dataset.status);
+});
+$('#list-category').addEventListener('change', e => setListFilter('category', e.target.value));
+$('#list-account').addEventListener('change', e => setListFilter('account', e.target.value));
+$('#list-sort').addEventListener('change', e => setListFilter('sort', e.target.value));
+$('#list-reset').addEventListener('click', () => { settings.list = { ...LIST_DEFAULTS }; saveSettings(); renderContracts(); });
 
 function renderAll() {
   refreshFilterOptions();

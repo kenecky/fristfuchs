@@ -70,6 +70,30 @@
 
     <!-- Verträge -->
     <section class="view" id="view-contracts" data-view="contracts">
+      <div class="list-filters">
+        <div class="chips" id="list-status" role="group" aria-label="Status">
+          <button type="button" class="chip" data-status="all" aria-pressed="true">Alle</button>
+          <button type="button" class="chip" data-status="active" aria-pressed="false">Aktiv</button>
+          <button type="button" class="chip" data-status="cancelled" aria-pressed="false">Gekündigt</button>
+          <button type="button" class="chip" data-status="ended" aria-pressed="false">Beendet</button>
+        </div>
+        <div class="list-selects">
+          <select id="list-category" aria-label="Nach Kategorie filtern"><option value="">Kategorie</option></select>
+          <select id="list-account" aria-label="Nach Konto filtern"><option value="">Konto</option></select>
+        </div>
+        <div class="search-meta">
+          <span><span id="list-count"></span><button type="button" class="link-btn list-reset" id="list-reset" hidden>Zurücksetzen</button></span>
+          <label class="sort-inline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>
+            <select id="list-sort" aria-label="Sortieren">
+              <option value="deadline">Nach Frist</option>
+              <option value="cost-desc">Teuerste zuerst</option>
+              <option value="cost-asc">Günstigste zuerst</option>
+              <option value="name">Nach Name</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <div id="contracts" class="list"></div>
     </section>
 
