@@ -533,3 +533,8 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .account-head .item-sub { white-space: normal; overflow: visible; }
 .iban-copy { width: 42px; height: 42px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 10px; display: grid; place-items: center; color: var(--accent-text); }
 .iban-copy svg { width: 19px; height: 19px; }
+/* Bearbeiten-Fenster: Fristhinweis oben, Dokumente */
+.form-alert:empty { display: none; }
+.form-alert .alert { margin-bottom: 16px; }
+.form-grid legend .count { color: var(--muted); font-weight: 500; }
+#dlg-form .sheet-foot .btn-danger { margin-right: auto; }

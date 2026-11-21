@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.17.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -871,73 +871,19 @@ window.addEventListener('resize', () => {
 
 let currentId = null;
 
-function openDetail(id) {
-  const c = contracts.find(x => x.id === id);
-  if (!c) return;
-  currentId = id;
+// Hinweis zur Frist oben im Bearbeiten-Fenster (ersetzt die frühere Detailansicht)
+function statusAlertHTML(c) {
   const s = schedule(c);
-  const iv = INTERVALS[c.interval] || INTERVALS.monthly;
-
-  let alert = '';
   if (s.kind === 'deadline') {
-    const cls = urgency(s);
-    alert = `<div class="alert ${cls}">
+    return `<div class="alert ${urgency(s)}">
       Spätestens kündigen bis <strong>${fmtDate(s.deadline)}</strong> (${relDays(s.daysLeft)}).<br>
       <span style="font-weight:500">Sonst verlängert sich der Vertrag – aktuelles Laufzeitende: ${fmtDate(s.termEnd)}${s.inMinTerm ? ' (Ende Mindestlaufzeit)' : ''}.</span>
     </div>`;
-  } else if (s.kind === 'anytime') {
-    alert = `<div class="alert ok">Jederzeit kündbar. Bei Kündigung heute endet der Vertrag frühestens am <strong>${fmtDate(s.earliestEnd)}</strong>.</div>`;
-  } else if (s.kind === 'cancelled') {
-    alert = `<div class="alert info">Gekündigt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${s.endDate ? ` – läuft aus am <strong>${fmtDate(s.endDate)}</strong>` : ''}.</div>`;
-  } else if (s.kind === 'ended') {
-    alert = `<div class="alert info">Vertrag beendet${s.endDate ? ' am ' + fmtDate(s.endDate) : ''}.</div>`;
-  } else {
-    alert = `<div class="alert info">Für die Fristberechnung fehlt das Abschlussdatum.</div>`;
   }
-
-  const link = url => {
-    const safe = /^https?:\/\//i.test(url) ? url : 'https://' + url;
-    return `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
-  };
-  const contact = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : esc(v);
-  const rows = [
-    ['Anbieter', esc(c.provider)],
-    ['Kategorie', esc(c.category)],
-    ['Status', STATUS[c.status]],
-    ['Betrag', `${eur.format(Number(c.amount) || 0)} ${iv.label}`],
-    ['Monatlich', eur.format(monthlyCost(c))],
-    ['Jährlich', eur.format(monthlyCost(c) * 12)],
-    ['Zahlungskonto', c.account ? esc(c.account) + (accountById(c.accountId) && accountDetails(accountById(c.accountId)) ? `<br><span class="item-sub">${esc(accountDetails(accountById(c.accountId)))}</span>` : '') : ''],
-    ['Zahlungsart', esc(c.paymentMethod)],
-    ['Abschluss', c.startDate ? fmtISO(c.startDate) : ''],
-    ['Mindestlaufzeit', c.minTermMonths ? `${c.minTermMonths} Monate` : 'keine'],
-    ['Verlängerung', c.renewalMonths ? `um ${c.renewalMonths} ${Number(c.renewalMonths) === 1 ? 'Monat' : 'Monate'}` : 'unbefristet'],
-    ['Kündigungsfrist', noticeText(c)],
-    ['Gekündigt am', c.cancelledAt ? fmtISO(c.cancelledAt) : ''],
-    ['Vertragsende', c.endDate ? fmtISO(c.endDate) : ''],
-    ['Vertragsnr.', esc(c.contractNo)],
-    ['Website', c.website ? link(c.website) : ''],
-    ['Kündigung an', c.cancelContact ? contact(c.cancelContact) : ''],
-  ].filter(([, v]) => v);
-
-  $('#detail-title').textContent = c.name;
-  $('#detail-body').innerHTML = `
-    <div class="detail-hero">
-      ${avatar(c)}
-      <div>
-        <div class="price">${eur.format(Number(c.amount) || 0)}<small>/${iv.short}</small></div>
-        <div class="item-sub">${eur.format(monthlyCost(c) * 12)} pro Jahr</div>
-      </div>
-    </div>
-    ${alert}
-    <dl class="dl">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
-    <h3 class="sub-title">Dokumente <span class="count" id="doc-count"></span></h3>
-    <div class="docs" id="doc-list"></div>
-    <button type="button" class="btn doc-add" id="doc-add">＋ Dokument hinzufügen</button>`;
-  $('#detail-ics').hidden = s.kind !== 'deadline';
-  if (!$('#dlg-detail').open) $('#dlg-detail').showModal();
-  renderDocs(id);
+  if (s.kind === 'anytime') return `<div class="alert ok">Jederzeit kündbar. Bei Kündigung heute endet der Vertrag frühestens am <strong>${fmtDate(s.earliestEnd)}</strong>.</div>`;
+  if (s.kind === 'cancelled') return `<div class="alert info">Gekündigt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${s.endDate ? ` – läuft aus am <strong>${fmtDate(s.endDate)}</strong>` : ''}.</div>`;
+  if (s.kind === 'ended') return `<div class="alert info">Vertrag beendet${s.endDate ? ' am ' + fmtDate(s.endDate) : ''}.</div>`;
+  return `<div class="alert info">Für die Fristberechnung fehlt das Abschlussdatum.</div>`;
 }
 
 /* ---------- Dokumente: Verarbeitung ---------- */
@@ -1168,6 +1114,7 @@ $('#doc-form').addEventListener('submit', async e => {
       const { originalSize, ...p } = pendingFile;
       await docStore.put({ id: uid(), contractId: currentId, name, ...p, createdAt: new Date().toISOString() });
       toast('Dokument gespeichert');
+      if (formIsNew) formDirty = true;   // neuer Vertrag noch nicht gespeichert → Rückfrage vor dem Verwerfen
     }
   } catch {
     toast('Speichern fehlgeschlagen – ist der Gerätespeicher voll?');
@@ -1201,7 +1148,7 @@ async function deleteDoc(id) {
   return true;
 }
 
-$('#dlg-detail').addEventListener('click', e => {
+$('#dlg-form').addEventListener('click', e => {
   if (e.target.closest('#doc-add')) { $('#doc-file').click(); return; }
   const btn = e.target.closest('[data-doc-action]');
   if (!btn) return;
@@ -1463,11 +1410,31 @@ function openForm(id = null) {
   lastLogoDomain = logoDomain(c);
   updateLogoPreview();
   $('#form-title').textContent = id ? 'Vertrag bearbeiten' : 'Neuer Vertrag';
+  // Neuer Vertrag bekommt sofort eine ID, damit Dokumente schon vorher angehängt werden können
+  currentId = id || uid();
+  formIsNew = !id;
+  formSaved = false;
+  $('#form-delete').hidden = !id;
+  $('#doc-list').innerHTML = '';
+  $('#doc-count').textContent = '';
   updateFormState();
   formDirty = false;
   $('#dlg-form').showModal();
+  $('#dlg-form .sheet-body').scrollTop = 0;
+  renderDocs(currentId);
   if (!id) form.elements.name.focus();
 }
+let formIsNew = false;
+let formSaved = false;
+// Neuer Vertrag verworfen → bereits angehängte Dokumente wieder entfernen
+$('#dlg-form').addEventListener('close', async () => {
+  if (!formIsNew || formSaved) return;
+  const docs = await docStore.byContract(currentId).catch(() => []);
+  if (!docs.length) return;
+  await docStore.removeByContract(currentId).catch(() => {});
+  await loadDocCounts();
+  updateStorageInfo();
+});
 
 /* Ungespeicherte Eingaben schützen: Rückfrage vor dem Schließen */
 let formDirty = false;
@@ -1646,6 +1613,9 @@ function updateFormState() {
   } else {
     p.textContent = '→ Trage das Abschlussdatum ein, um die Frist zu berechnen.';
   }
+  // Beim Bearbeiten oben den Fristhinweis zeigen (wie früher in der Detailansicht), live aktualisiert
+  $('#form-alert').innerHTML = editingId ? statusAlertHTML(data) : '';
+  $('#form-ics').hidden = !(editingId && s.kind === 'deadline');
 }
 form.addEventListener('input', updateFormState);
 form.addEventListener('change', updateFormState);
@@ -1660,12 +1630,13 @@ form.addEventListener('submit', e => {
     const idx = contracts.findIndex(x => x.id === editingId);
     contracts[idx] = { ...contracts[idx], ...data, updatedAt: now };
   } else {
-    contracts.push({ id: uid(), ...data, createdAt: now, updatedAt: now });
+    // Die ID wurde beim Öffnen vergeben, damit Dokumente schon vor dem Speichern angehängt werden können
+    contracts.push({ id: currentId || uid(), ...data, createdAt: now, updatedAt: now });
   }
   persist();
   renderAll();
+  formSaved = true;
   closeSheet($('#dlg-form'), true);
-  if (editingId && $('#dlg-detail').open) openDetail(editingId);
   toast(editingId ? 'Änderungen gespeichert' : 'Vertrag angelegt');
 });
 
@@ -1771,7 +1742,6 @@ accForm.addEventListener('submit', e => {
     fillAccountSelect(acc.id);
     form.elements.accountId.dispatchEvent(new Event('change'));
   }
-  if ($('#dlg-detail').open && currentId) openDetail(currentId);
   toast(editingAccountId ? 'Konto gespeichert' : 'Konto angelegt');
 });
 
@@ -2147,7 +2117,6 @@ function enableSwipeToClose(dlg) {
   dlg.addEventListener('touchend', end);
   dlg.addEventListener('touchcancel', end);
 }
-enableSwipeToClose($('#dlg-detail'));
 enableSwipeToClose($('#dlg-form'));
 enableSwipeToClose($('#dlg-search'));
 
@@ -2177,7 +2146,7 @@ function toast(msg) {
 $('#btn-add').addEventListener('click', () => openForm());
 document.addEventListener('click', e => {
   const item = e.target.closest('.item[data-id]');
-  if (item) { openDetail(item.dataset.id); return; }
+  if (item) { openForm(item.dataset.id); return; }
   if (e.target.closest('[data-action="add"]')) openForm();
   const close = e.target.closest('[data-close]');
   if (close) {
@@ -2193,27 +2162,28 @@ for (const dlg of $$('dialog')) {
   });
 }
 
-$('#detail-edit').addEventListener('click', () => openForm(currentId));
-$('#detail-delete').addEventListener('click', async () => {
-  const c = contracts.find(x => x.id === currentId);
-  const n = docCounts.get(currentId) || 0;
+$('#form-delete').addEventListener('click', async () => {
+  const c = contracts.find(x => x.id === editingId);
+  const n = docCounts.get(editingId) || 0;
   if (!c) return;
   const ok = await confirmDelete('Vertrag löschen?',
     `„${c.name}“ wird dauerhaft gelöscht.${n ? ` ${n === 1 ? 'Das angehängte Dokument wird' : `Die ${n} angehängten Dokumente werden`} ebenfalls gelöscht.` : ''}`);
   if (!ok) return;
-  contracts = contracts.filter(x => x.id !== currentId);
+  contracts = contracts.filter(x => x.id !== c.id);
   persist();
   await docStore.removeByContract(c.id).catch(() => {});
   await loadDocCounts();
   updateStorageInfo();
   renderAll();
-  $('#dlg-detail').close();
+  formSaved = true;
+  closeSheet($('#dlg-form'), true);
   toast('Vertrag gelöscht');
 });
-$('#detail-ics').addEventListener('click', () => {
-  const c = contracts.find(x => x.id === currentId);
-  const s = c && schedule(c);
-  if (s && s.kind === 'deadline') downloadICS([{ c, s }], `kuendigungsfrist-${c.name.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.ics`);
+// Frist in den Kalender – mit dem aktuellen Stand des Formulars
+$('#form-ics').addEventListener('click', () => {
+  const c = { ...readForm(), id: currentId };
+  const s = schedule(c);
+  if (s.kind === 'deadline') downloadICS([{ c, s }], `kuendigungsfrist-${(c.name || 'vertrag').replace(/[^\wäöüÄÖÜß-]+/g, '_')}.ics`);
 });
 
 
@@ -2305,7 +2275,7 @@ let startTab = 'dashboard';
 try { startTab = sessionStorage.getItem('vw.tab') || startTab; } catch {}
 showView(params.get('view') || startTab, false);
 if (params.get('action') === 'add') openForm();
-if (params.get('id')) openDetail(params.get('id'));
+if (params.get('id') && contracts.some(c => c.id === params.get('id'))) openForm(params.get('id'));
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 

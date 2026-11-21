@@ -173,21 +173,6 @@
   </nav>
 
   <!-- Detail -->
-  <dialog id="dlg-detail" class="sheet">
-    <div class="grabber" aria-hidden="true"></div>
-    <div class="sheet-head">
-      <h2 id="detail-title"></h2>
-      <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
-    </div>
-    <div id="detail-body" class="sheet-body"></div>
-    <div class="sheet-foot">
-      <button type="button" class="btn btn-danger" id="detail-delete">Löschen</button>
-      <span class="spacer"></span>
-      <button type="button" class="btn" id="detail-ics">Frist in Kalender</button>
-      <button type="button" class="btn btn-primary" id="detail-edit">Bearbeiten</button>
-    </div>
-  </dialog>
-
   <!-- Formular -->
   <dialog id="dlg-form" class="sheet bottom-sheet">
     <div class="grabber" aria-hidden="true"></div>
@@ -197,6 +182,7 @@
         <button type="button" class="icon-btn" data-close aria-label="Schließen">✕</button>
       </div>
       <div class="sheet-body form-grid">
+        <div id="form-alert" class="form-alert"></div>
         <fieldset>
           <legend>Allgemein</legend>
           <div class="field span-2 logo-field">
@@ -281,6 +267,9 @@
           <label class="field" data-show-when="cancelled ended"><span>Vertragsende</span>
             <input name="endDate" type="date"></label>
           <p class="hint span-2" id="form-preview"></p>
+          <div class="span-2">
+            <button type="button" class="btn" id="form-ics" hidden>📅 Frist in Kalender eintragen</button>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -292,8 +281,15 @@
           <label class="field span-2"><span>Notizen</span>
             <textarea name="notes" rows="3"></textarea></label>
         </fieldset>
+
+        <fieldset>
+          <legend>Dokumente <span class="count" id="doc-count"></span></legend>
+          <div class="docs span-2" id="doc-list"></div>
+          <button type="button" class="btn doc-add span-2" id="doc-add">＋ Dokument hinzufügen</button>
+        </fieldset>
       </div>
       <div class="sheet-foot">
+        <button type="button" class="btn btn-danger" id="form-delete">Löschen</button>
         <button type="button" class="btn" data-close>Abbrechen</button>
         <span class="spacer"></span>
         <button type="submit" class="btn btn-primary">Speichern</button>
