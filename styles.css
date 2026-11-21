@@ -710,3 +710,8 @@ html { -webkit-tap-highlight-color: transparent; }
 /* Kein Zoomen der Seite (Dokument-Betrachter hat einen eigenen Zoom) */
 html, body { touch-action: pan-x pan-y; }
 button, a, input, select, textarea, label { touch-action: manipulation; }
+
+/* Fristen und Suche fahren höher hinauf; ein darüber geöffneter Vertrag bleibt niedriger,
+   so sieht man beide Fenster gestaffelt hintereinander */
+dialog.sheet.bottom-sheet#dlg-deadlines, dialog.sheet.bottom-sheet#dlg-search { height: min(94dvh, 900px); }
+dialog.sheet.bottom-sheet#dlg-form.stacked { height: min(84dvh, 800px); }

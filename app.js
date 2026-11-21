@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.25.0';
+const APP_VERSION = '1.26.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -831,8 +831,12 @@ function openSearch() {
   if (dlg.open) return;
   renderSearch(true);
   dlg.showModal();
-  // Fokus direkt im Tipp setzen, sonst öffnet iOS die Tastatur nicht
-  $('#search').focus({ preventScroll: true });
+  noAutoFocus(dlg);
+}
+// Beim Öffnen kein Eingabefeld vorauswählen – sonst springt die Tastatur auf
+function noAutoFocus(dlg) {
+  const el = document.activeElement;
+  if (el && dlg.contains(el) && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.blur();
 }
 // Bottom-Sheets nach unten hinausgleiten lassen statt hart zu schließen
 // force: ohne Rückfrage (z. B. nach dem Speichern)
@@ -871,6 +875,7 @@ $('#btn-bell').addEventListener('click', () => {
   if (dlg.open) return;
   $('#deadlines-body').scrollTop = 0;
   dlg.showModal();
+  noAutoFocus(dlg);
 });
 function viewIndexFromScroll() {
   const i = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
@@ -1476,11 +1481,13 @@ function openForm(id = null) {
   $('#doc-count').textContent = '';
   updateFormState();
   formDirty = false;
+  // Über einem anderen Fenster (Fristen, Suche) etwas niedriger, damit beide gestaffelt sichtbar sind
+  $('#dlg-form').classList.toggle('stacked', $$('dialog.bottom-sheet[open]').length > 0);
   $('#dlg-form').showModal();
+  noAutoFocus($('#dlg-form'));
   for (const pane of $$('.form-pane')) pane.scrollTop = 0;
   setFormTab(0, false);
   renderDocs(currentId);
-  if (!id) form.elements.name.focus();
 }
 let formIsNew = false;
 let formSaved = false;
