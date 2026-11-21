@@ -40,7 +40,7 @@
     --primary-ink: #0f172a;
     --accent-text: #2dd4bf;
     --hero-bg: #0b1222;
-    --topbar-bg: #0b1222;
+    --topbar-bg: #0f172a;
     --danger: #fb923c;
     --danger-bg: #3a1d10;
     --warn: #fbbf24;
@@ -66,7 +66,7 @@
   --primary-ink: #0f172a;
   --accent-text: #2dd4bf;
   --hero-bg: #0b1222;
-  --topbar-bg: #0b1222;
+  --topbar-bg: #0f172a;
   --danger: #fb923c;
   --danger-bg: #3a1d10;
   --warn: #fbbf24;
@@ -107,6 +107,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid rgba(255, 255, 255, .06);
 }
 .brand { display: flex; align-items: center; gap: 10px; }
+/* Großes Logo, ohne die Kopfzeile höher zu machen (ragt über den Innenabstand) */
+.brand-logo { width: 52px; height: 52px; margin: -6px -2px -6px -6px; flex-shrink: 0; }
 .brand { min-width: 0; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
 .brand-name { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
@@ -412,8 +414,8 @@ dialog.viewer::backdrop { background: #0b1222; }
 
 /* Vertragsansicht per Wischen schließen */
 .sheet-body, .viewer-body { overscroll-behavior: contain; }
-#dlg-detail, #dlg-search, #dlg-form { transition: transform .22s ease; }
-#dlg-detail.dragging, #dlg-search.dragging, #dlg-form.dragging { transition: none; }
+#dlg-deadlines, #dlg-search, #dlg-form { transition: transform .22s ease; }
+#dlg-deadlines.dragging, #dlg-search.dragging, #dlg-form.dragging { transition: none; }
 .grabber { display: none; width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: 8px auto -4px; flex-shrink: 0; }
 @media (pointer: coarse) { .grabber { display: block; } }
 
@@ -657,3 +659,8 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 }
 dialog.bottom-sheet .form-pane { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 .form-pane fieldset { margin-bottom: 0; }
+
+/* Fristen-Fenster (Glocke) */
+#deadlines-body .section-title:first-child { margin-top: 0; }
+#deadlines-body .section-title .count { margin-left: 6px; color: var(--muted); font-weight: 600; }
+#deadlines-body .list { margin-bottom: 18px; }

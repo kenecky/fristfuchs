@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.23.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -605,12 +605,7 @@ function renderDashboard() {
   $('#btn-bell').setAttribute('aria-label', due.length
     ? `${due.length} anstehende Kündigungsfristen` : 'Keine anstehenden Kündigungsfristen');
 
-  const upcoming = withDeadline.slice(0, 6);
-  $('#upcoming').innerHTML = contracts.length === 0
-    ? emptyHTML('Noch keine Verträge erfasst. Leg los – oder lade unter „Mehr“ Beispieldaten.')
-    : upcoming.length
-      ? upcoming.map(x => itemHTML(x.c)).join('')
-      : emptyHTML('Keine anstehenden Fristen. Trage Abschlussdatum, Laufzeit und Kündigungsfrist ein, damit Fristen berechnet werden.', false);
+  renderDeadlines(withDeadline, due);
 
   const byCat = {};
   for (const c of costing) {
@@ -628,6 +623,24 @@ function renderDashboard() {
         </div>`).join('')
     : '<p class="hint">Noch keine Kosten erfasst.</p>';
   $('#by-category').hidden = false;
+}
+
+/* Inhalt des Fristen-Fensters: ausstehende Bestätigungen, bald fällige und spätere Fristen */
+function renderDeadlines(withDeadline, due) {
+  const pending = contracts
+    .filter(c => c.status === 'cancelled' && !c.cancelConfirmedAt)
+    .sort((a, b) => String(a.cancelledAt).localeCompare(String(b.cancelledAt)));
+  const later = withDeadline.filter(x => x.s.daysLeft > settings.warnDays);
+  const group = (title, list, hint = '') => list.length ? `
+    <h3 class="section-title">${title}<span class="count">${list.length}</span></h3>
+    ${hint ? `<p class="hint">${hint}</p>` : ''}
+    <div class="list">${list.map(itemHTML).join('')}</div>` : '';
+  const html = group('Bestätigung ausstehend', pending, 'Kündigung verschickt, aber noch nicht bestätigt.')
+    + group(`In den nächsten ${settings.warnDays} Tagen`, due.map(x => x.c))
+    + group('Später', later.map(x => x.c));
+  $('#deadlines-body').innerHTML = html || (contracts.length === 0
+    ? emptyHTML('Noch keine Verträge erfasst. Leg los – oder lade unter „Mehr“ Beispieldaten.')
+    : emptyHTML('Keine anstehenden Fristen. Trage Abschlussdatum, Laufzeit und Kündigungsfrist ein, damit Fristen berechnet werden.', false));
 }
 
 function sortContracts(list, sort = 'deadline') {
@@ -852,12 +865,12 @@ $('#search-reset').addEventListener('click', () => {
 ['#search', '#filter-category', '#filter-account', '#sort'].forEach(sel => $(sel).addEventListener('input', () => renderSearch()));
 
 /* Glocke: zu den anstehenden Fristen auf der Übersicht */
+// Glocke: Fenster mit allen Kündigungsfristen fährt von unten hoch
 $('#btn-bell').addEventListener('click', () => {
-  if (currentView !== 'dashboard') showView('dashboard');
-  const view = $('#view-dashboard');
-  const target = $('#upcoming').previousElementSibling || $('#upcoming');
-  const top = target.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop - 12;
-  view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  const dlg = $('#dlg-deadlines');
+  if (dlg.open) return;
+  $('#deadlines-body').scrollTop = 0;
+  dlg.showModal();
 });
 function viewIndexFromScroll() {
   const i = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
@@ -2303,6 +2316,7 @@ function enableSwipeToClose(dlg) {
 }
 enableSwipeToClose($('#dlg-form'));
 enableSwipeToClose($('#dlg-search'));
+enableSwipeToClose($('#dlg-deadlines'));
 
 /* ---------- Toast ---------- */
 
