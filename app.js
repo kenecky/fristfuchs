@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -42,7 +42,6 @@ function persist() { safeSet(STORAGE_KEY, contracts); }
 /* ---------- Konten ---------- */
 
 const ACCOUNTS_KEY = 'vw.accounts.v1';
-const ACCOUNT_TYPES = { giro: 'Girokonto', tagesgeld: 'Tagesgeld', kredit: 'Kreditkarte', paypal: 'PayPal', sonstiges: 'Sonstiges' };
 const BANKS = ['Sparkasse', 'Volksbank', 'Raiffeisenbank', 'Deutsche Bank', 'Commerzbank', 'Postbank', 'DKB', 'ING', 'N26', 'comdirect',
   'Consorsbank', 'Targobank', 'HypoVereinsbank', 'Santander', 'Sparda-Bank', 'PSD Bank', 'C24', 'Revolut', 'Trade Republic',
   'American Express', 'Barclays', 'Hanseatic Bank', 'Advanzia', 'PayPal'];
@@ -103,14 +102,13 @@ const formatIban = s => normIban(s).replace(/(.{4})/g, '$1 ').trim();
 const maskIban = s => { const i = normIban(s); return i ? `${i.slice(0, 4)}\u00a0••••\u00a0${i.slice(-4)}` : ''; };
 
 function accountDetails(a) {
-  const ref = a.type === 'kredit' ? (a.cardLast4 ? `•••• ${a.cardLast4}` : '')
-    : a.type === 'paypal' ? (a.email || '') : maskIban(a.iban);
-  // Doppelte Angaben (z. B. Art „PayPal“ und Anbieter „PayPal“) nur einmal zeigen
-  return [...new Set([ACCOUNT_TYPES[a.type] || '', a.bank, ref].filter(Boolean))].join(' · ');
+  if (a.type === 'kredit') return a.cardLast4 ? `Karte •••• ${a.cardLast4}` : '';
+  if (a.type === 'paypal') return a.email || '';
+  return a.iban ? `IBAN ${maskIban(a.iban)}` : '';
 }
 function accountAvatar(a, extraClass = '') {
-  // Bank-Logo automatisch über den Banknamen (z. B. Sparkasse, DKB, PayPal)
-  return avatar({ name: a.name, provider: `${a.bank || ''} ${a.type === 'paypal' ? 'PayPal' : ''}`, website: '', logoMode: 'auto' }, extraClass);
+  // Bank-Logo automatisch über den Kontonamen (z. B. „Girokonto Sparkasse“, „PayPal“)
+  return avatar({ name: a.name, provider: `${a.name} ${a.bank || ''}`, website: '', logoMode: 'auto' }, extraClass);
 }
 function saveSettings() { safeSet(SETTINGS_KEY, settings); }
 
@@ -1676,8 +1674,9 @@ function openAccountForm(id = null, forContract = false) {
   accountForContract = forContract;
   const a = accountById(id) || { type: 'giro' };
   accForm.reset();
+  accountFormBaseType = id ? a.type : '';
   $('#dl-banks').innerHTML = BANKS.map(b => `<option value="${esc(b)}">`).join('');
-  for (const f of ['name', 'type', 'bank', 'iban', 'cardLast4', 'email', 'notes']) accForm.elements[f].value = a[f] ?? '';
+  for (const f of ['name', 'iban', 'cardLast4', 'email', 'notes']) accForm.elements[f].value = a[f] ?? '';
   accForm.elements.iban.value = a.iban ? formatIban(a.iban) : '';
   $('#account-form-title').textContent = id ? 'Konto bearbeiten' : 'Neues Konto';
   $('#account-delete').hidden = !id;
@@ -1686,8 +1685,15 @@ function openAccountForm(id = null, forContract = false) {
   if (!id) accForm.elements.name.focus();
 }
 
+// Kontoart ergibt sich aus dem Namen; bei bestehenden Konten bleibt eine
+// ausdrücklich gesetzte Art (Kreditkarte/PayPal) erhalten, wenn der Name nichts verrät.
+let accountFormBaseType = '';
+function accountFormType() {
+  const guess = guessAccountType(accForm.elements.name.value);
+  return guess === 'giro' && ['kredit', 'paypal', 'tagesgeld'].includes(accountFormBaseType) ? accountFormBaseType : guess;
+}
 function updateAccountForm() {
-  const type = accForm.elements.type.value;
+  const type = accountFormType();
   for (const el of $$('[data-show-type]', accForm)) el.hidden = !el.dataset.showType.split(' ').includes(type);
   const raw = accForm.elements.iban.value;
   const hint = $('#iban-hint');
@@ -1696,7 +1702,7 @@ function updateAccountForm() {
   else { hint.textContent = normIban(raw).length < 15 ? 'IBAN unvollständig' : 'Die Prüfziffer stimmt nicht – bitte die IBAN prüfen.'; hint.className = 'hint danger-text'; }
   $('#iban-copy').hidden = !ibanValid(raw);
   $('#account-preview').innerHTML = accountAvatar({
-    name: accForm.elements.name.value.trim() || '?', bank: accForm.elements.bank.value, type,
+    name: accForm.elements.name.value.trim() || '?', type,
   });
 }
 accForm.addEventListener('input', updateAccountForm);
@@ -1716,12 +1722,12 @@ accForm.addEventListener('submit', e => {
   if (accounts.some(a => a.id !== editingAccountId && a.name.toLowerCase() === name.toLowerCase())) {
     toast('Ein Konto mit diesem Namen gibt es schon.'); accForm.elements.name.focus(); return;
   }
-  const type = v('type');
+  const type = accountFormType();
   const iban = ['giro', 'tagesgeld', 'sonstiges'].includes(type) ? normIban(v('iban')) : '';
   if (iban && !ibanValid(iban)) { toast('Die IBAN ist nicht gültig.'); accForm.elements.iban.focus(); return; }
   const card = type === 'kredit' ? v('cardLast4') : '';
   if (card && !/^\d{4}$/.test(card)) { toast('Bitte genau 4 Ziffern der Karte eingeben.'); accForm.elements.cardLast4.focus(); return; }
-  const data = { name, type, bank: v('bank'), iban, cardLast4: card, email: type === 'paypal' ? v('email') : '', notes: v('notes') };
+  const data = { name, type, bank: accountById(editingAccountId)?.bank || '', iban, cardLast4: card, email: type === 'paypal' ? v('email') : '', notes: v('notes') };
 
   let acc;
   if (editingAccountId) {

@@ -409,20 +409,10 @@
           <legend>Konto</legend>
           <div class="field span-2 account-preview-row">
             <span id="account-preview"></span>
-            <p class="hint" id="account-preview-hint">Das Logo der Bank wird automatisch ergänzt, wenn sie bekannt ist.</p>
+            <p class="hint" id="account-preview-hint">Steht die Bank im Namen (z.&nbsp;B. Sparkasse, DKB, ING), wird ihr Logo automatisch ergänzt. „Kreditkarte“, „Visa“ oder „PayPal“ im Namen zeigen die passenden Felder.</p>
           </div>
           <label class="field span-2"><span>Name *</span>
             <input name="name" required maxlength="60" placeholder="z. B. Girokonto Sparkasse" autocomplete="off"></label>
-          <label class="field"><span>Art</span>
-            <select name="type">
-              <option value="giro">Girokonto</option>
-              <option value="tagesgeld">Tagesgeld</option>
-              <option value="kredit">Kreditkarte</option>
-              <option value="paypal">PayPal</option>
-              <option value="sonstiges">Sonstiges</option>
-            </select></label>
-          <label class="field"><span>Bank / Anbieter</span>
-            <input name="bank" list="dl-banks" placeholder="z. B. Sparkasse, DKB, ING" autocomplete="off"></label>
           <div class="field span-2" data-show-type="giro tagesgeld sonstiges"><span>IBAN</span>
             <div class="iban-row">
               <input name="iban" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="DE00 0000 0000 0000 0000 00">
@@ -430,7 +420,7 @@
             </div>
             <p class="hint" id="iban-hint"></p>
           </div>
-          <label class="field" data-show-type="kredit"><span>Karte (letzte 4 Ziffern)</span>
+          <label class="field span-2" data-show-type="kredit"><span>Karte (letzte 4 Ziffern)</span>
             <input name="cardLast4" inputmode="numeric" maxlength="4" placeholder="1234" autocomplete="off"></label>
           <label class="field span-2" data-show-type="paypal"><span>PayPal-E-Mail</span>
             <input name="email" type="email" placeholder="name@example.com" autocomplete="off"></label>

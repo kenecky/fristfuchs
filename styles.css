@@ -21,6 +21,10 @@
   --ok-bg: #d5f7f0;
   --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 16px rgba(15, 23, 42, .06);
   --radius: 14px;
+  --account-head-bg: linear-gradient(135deg, #0f172a, #1b2a45);
+  --account-head-muted: #475569;
+  --account-body: #e4e9f1;
+  --account-edge: #cfd7e3;
   color-scheme: light;
 }
 
@@ -44,6 +48,10 @@
     --ok: #2dd4bf;
     --ok-bg: #0e2f2d;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+    --account-head-bg: linear-gradient(135deg, #1c3a4a, #22304b);
+    --account-head-muted: #2a3550;
+    --account-body: #0b1222;
+    --account-edge: #27344d;
     color-scheme: dark;
   }
 }
@@ -66,6 +74,10 @@
   --ok: #2dd4bf;
   --ok-bg: #0e2f2d;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+  --account-head-bg: linear-gradient(135deg, #1c3a4a, #22304b);
+  --account-head-muted: #2a3550;
+  --account-body: #0b1222;
+  --account-edge: #27344d;
   color-scheme: dark;
 }
 
@@ -510,18 +522,26 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .sort-inline select:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: 8px; }
 .list-selects .field > span { font-size: .8rem; }
 /* Konten */
-.account-card { padding: 12px; }
-.account-head {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 2px 12px;
-  width: 100%; padding: 4px 4px 12px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer;
-  border-radius: 12px;
+.account-card {
+  padding: 0; overflow: hidden; background: var(--account-body);
+  border-color: var(--account-edge); margin-bottom: 18px;
 }
-.account-head:not(.static):hover .item-title { color: var(--accent-text); }
-.account-head.static { cursor: default; }
-.account-head .avatar { width: 46px; height: 46px; }
+.account-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 12px;
+  width: 100%; padding: 14px 14px 14px 12px; border: 0; text-align: left; cursor: pointer;
+  background: var(--account-head-bg); color: #fff; border-radius: 0;
+  border-bottom: 3px solid var(--mint);
+}
+.account-head .item-title { color: #fff; font-size: 1.05rem; }
+.account-head .item-sub, .account-head .item-interval { color: rgba(255, 255, 255, .72); }
+.account-head .price { color: var(--mint); font-size: 1.15rem; }
+.account-head:not(.static):hover .item-title { color: var(--mint); }
+.account-head:focus-visible { outline: 2px solid var(--mint); outline-offset: -4px; }
+.account-head.static { cursor: default; background: var(--account-head-muted); border-bottom-color: var(--muted); }
+.account-head .avatar { width: 46px; height: 46px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .18); }
 .account-head .item-sub + .item-sub { font-size: .8rem; }
-.account-empty { margin: 0 4px 4px; }
-.account-card > .list { gap: 8px; }
+.account-empty { margin: 0; padding: 14px; }
+.account-card > .list { gap: 8px; padding: 12px; }
 #account-add { margin-top: 4px; }
 .iban-row { display: flex; gap: 8px; }
 .iban-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
