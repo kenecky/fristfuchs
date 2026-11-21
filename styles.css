@@ -573,7 +573,7 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .steps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .steps li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 0 4px; }
 .steps li::before {
-  content: ''; position: absolute; top: 13px; right: 50%; width: 100%; height: 3px; border-radius: 2px;
+  content: ''; position: absolute; top: 16.5px; right: 50%; width: 100%; height: 3px; border-radius: 2px;
   background: var(--border); z-index: 0;
 }
 .steps li:first-child::before { display: none; }
@@ -592,7 +592,27 @@ dialog.bottom-sheet .sheet-body { padding-bottom: calc(16px + env(safe-area-inse
 .step-label { font-size: .85rem; font-weight: 650; color: var(--muted); }
 .steps li.done .step-label, .steps li.current .step-label { color: var(--text); }
 .step-date { font-size: .78rem; color: var(--muted); min-height: 1em; font-variant-numeric: tabular-nums; }
-.cancel-action { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.cancel-action .hint { margin: 0; }
+.cancel-box { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--border); }
+.cancel-hint { margin: 0; text-align: center; }
+.cancel-panel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 12px; border-radius: 12px; background: var(--surface-2);
+  animation: panel-in .2s ease;
+}
+.cancel-panel .field:has([name=cancelledAt]), .cancel-panel .field:has([name=cancelMethod]) { min-width: 0; }
+.panel-title { grid-column: 1 / -1; margin: 0; font-size: .95rem; color: var(--text); }
+.cancel-panel .hint { margin: 0; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (max-width: 520px) { .cancel-panel { grid-template-columns: 1fr; } }
+/* Schritte als Knöpfe */
+.step-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%;
+  padding: 4px 2px 6px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.step-btn.static { cursor: default; }
+.step-btn:not(.static):not(:disabled):hover .step-dot { border-color: var(--mint); }
+.step-btn:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.step-btn:disabled { cursor: not-allowed; opacity: .55; }
+.steps li.current .step-btn:not(:disabled):not(.static) .step-label { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
 .btn-link { border: 0; background: none; padding: 4px 0; min-height: 0; color: var(--danger); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .btn-link:hover { background: none; }

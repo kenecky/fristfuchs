@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.20.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -919,7 +919,7 @@ function statusAlertHTML(c) {
   if (s.kind === 'cancelled' && !s.confirmed) {
     const late = s.waitingDays >= CONFIRM_WAIT_DAYS;
     return `<div class="alert ${late ? 'urgent' : 'soon'}">
-      Kündigung abgeschickt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${c.cancelMethod ? ' per ' + esc(c.cancelMethod) : ''} – <strong>Bestätigung steht noch aus</strong>${s.waitingDays > 0 ? ` (seit ${s.waitingDays} ${s.waitingDays === 1 ? 'Tag' : 'Tagen'})` : ''}.<br>
+      Gekündigt${c.cancelledAt ? ' am ' + fmtISO(c.cancelledAt) : ''}${c.cancelMethod ? ' per ' + esc(c.cancelMethod) : ''} – <strong>Bestätigung steht noch aus</strong>${s.waitingDays > 0 ? ` (seit ${s.waitingDays} ${s.waitingDays === 1 ? 'Tag' : 'Tagen'})` : ''}.<br>
       <span style="font-weight:500">${late ? 'Bitte beim Anbieter nachhaken – ohne Bestätigung ist nicht sicher, dass die Kündigung angekommen ist.' : 'Bewahre den Nachweis (z.\u00a0B. Sendebestätigung) auf – am besten unten als Dokument.'}</span>
     </div>`;
   }
@@ -1655,7 +1655,13 @@ function cancelState(d) {
 }
 function updateCancelBox(d) {
   const st = cancelState(d);
-  for (const el of $$('[data-cstate]', form)) el.hidden = !el.dataset.cstate.split(' ').includes(st);
+  // Bestätigungs-Felder auch bei beendeten Verträgen zeigen, wenn eine Bestätigung vorliegt
+  const keys = [st];
+  if (st === 'ended' && d.cancelConfirmedAt) keys.push('confirmed-ended');
+  for (const el of $$('[data-cstate]', form)) el.hidden = !el.dataset.cstate.split(' ').some(k => keys.includes(k));
+  $('#step-cancel').setAttribute('aria-pressed', String(st !== 'none'));
+  $('#step-confirm').setAttribute('aria-pressed', String(st !== 'none' && !!d.cancelConfirmedAt));
+  $('#step-confirm').disabled = st === 'none';
   const done = { sent: st !== 'none', confirmed: st !== 'none' && !!d.cancelConfirmedAt, ended: st === 'ended' };
   const current = st === 'none' ? 'sent' : st === 'sent' ? 'confirmed' : st === 'confirmed' ? 'ended' : '';
   const dates = { sent: d.cancelledAt, confirmed: d.cancelConfirmedAt, ended: d.endDate };
@@ -1669,10 +1675,10 @@ function updateCancelBox(d) {
   if (st === 'sent') {
     const days = d.cancelledAt ? daysBetween(parseISO(d.cancelledAt), today()) : 0;
     const late = days >= CONFIRM_WAIT_DAYS;
-    $('#cancel-wait').textContent = late
-      ? `Seit ${days} Tagen keine Bestätigung – bitte beim Anbieter nachhaken.`
-      : 'Sobald der Anbieter die Kündigung bestätigt hat, hier abhaken.';
-    $('#cancel-wait').className = late ? 'hint danger-text' : 'hint';
+    $('#cancel-wait').innerHTML = late
+      ? `Seit ${days} Tagen keine Bestätigung – bitte beim Anbieter nachhaken. Danach oben auf <strong>Bestätigt</strong> tippen.`
+      : 'Sobald der Anbieter die Kündigung bestätigt hat, oben auf <strong>Bestätigt</strong> tippen.';
+    $('#cancel-wait').className = late ? 'hint cancel-hint danger-text' : 'hint cancel-hint';
   }
   const calc = d.cancelledAt ? endIfCancelledOn(d, parseISO(d.cancelledAt)) : null;
   $('#cancel-end-hint').textContent = st === 'none' ? ''
@@ -1685,7 +1691,8 @@ function fillAutoEndDate() {
   const calc = d.cancelledAt ? endIfCancelledOn(d, parseISO(d.cancelledAt)) : null;
   if (calc) { form.elements.endDate.value = toISO(calc); endDateAuto = true; }
 }
-$('#cancel-send').addEventListener('click', () => {
+$('#step-cancel').addEventListener('click', () => {
+  if (form.elements.status.value !== 'active') { form.elements.cancelledAt.focus(); return; }
   form.elements.status.value = 'cancelled';
   form.elements.cancelledAt.value = toISO(today());
   form.elements.cancelConfirmedAt.value = '';
@@ -1694,19 +1701,26 @@ $('#cancel-send').addEventListener('click', () => {
   formDirty = true;
   updateFormState();
 });
-$('#cancel-confirm').addEventListener('click', () => {
+$('#step-confirm').addEventListener('click', () => {
+  if (form.elements.status.value === 'active') return;
+  if (form.elements.cancelConfirmedAt.value) { form.elements.cancelConfirmedAt.focus(); return; }
   form.elements.cancelConfirmedAt.value = toISO(today());
   formDirty = true;
   updateFormState();
 });
 $('#cancel-undo').addEventListener('click', async () => {
   const ok = await ask({
-    title: 'Kündigung zurücknehmen?', message: 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung werden beim Speichern entfernt.',
+    title: 'Kündigung zurücknehmen?', message: 'Der Vertrag gilt dann wieder als aktiv. Die Angaben zur Kündigung und eine eingetragene Bestätigung werden beim Speichern entfernt.',
     buttons: [{ label: 'Zurücknehmen', value: true, kind: 'danger' }, { label: 'Abbrechen', value: false }],
   });
   if (!ok) return;
   for (const f of ['cancelledAt', 'cancelMethod', 'cancelConfirmedAt', 'endDate']) form.elements[f].value = '';
   form.elements.status.value = 'active';
+  formDirty = true;
+  updateFormState();
+});
+$('#confirm-undo').addEventListener('click', () => {
+  form.elements.cancelConfirmedAt.value = '';
   formDirty = true;
   updateFormState();
 });
