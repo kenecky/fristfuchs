@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.30.0';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -266,12 +266,11 @@ const currentAmount = c => priceAt(c).amount;
  */
 function averagePrice(c) {
   const periods = pricePeriods(c);
-  const start = parseISO(c.startDate) || periods.map(p => parseISO(p.from)).filter(Boolean).sort((a, b) => a - b)[0];
-  if (!start) return null;
-  let end = today();
-  const ce = parseISO(c.endDate);
-  if (ce && ce < end && c.status !== 'active') end = ce;
-  if (end < start) return null;
+  const start = parseISO(c.startDate);
+  const min = Number(c.minTermMonths) || 0;
+  // Über die gesamte Mindestlaufzeit (Vertragsbeginn bis Ende der Mindestlaufzeit)
+  if (!start || !min) return null;
+  const end = addDays(addMonths(start, min), -1);
   const stop = addDays(end, 1);
   const pts = [start, stop];
   const add = d => { if (d && d > start && d < stop) pts.push(d); };
@@ -288,7 +287,7 @@ function averagePrice(c) {
     sum += a * n; days += n;
   }
   if (!days || amounts.size < 2) return null;
-  return { amount: sum / days, from: start, to: end, days, open: end.getTime() === today().getTime() };
+  return { amount: sum / days, from: start, to: end, days, months: min };
 }
 function nextPriceChange(c, d = today()) {
   const cur = currentAmount(c);
@@ -711,11 +710,11 @@ function renderDashboard() {
   const pctFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   $('#by-category').innerHTML = rows.length
     ? rows.map(([k, v]) => `
-        <div class="bar-row">
+        <${k === 'Ohne Kategorie' ? 'div' : 'button type="button"'} class="bar-row"${k === 'Ohne Kategorie' ? '' : ` data-category="${esc(k)}" aria-label="Verträge der Kategorie ${esc(k)} anzeigen"`}>
           <span class="bar-label" title="${esc(k)}">${esc(k)}</span>
           <span class="bar-track">${barHTML(max ? v / max * 100 : 0, total ? pctFmt.format(v / total * 100) + ' %' : '')}</span>
           <span class="bar-value">${eur.format(v)}</span>
-        </div>`).join('')
+        </${k === 'Ohne Kategorie' ? 'div' : 'button'}>`).join('')
     : '<p class="hint">Noch keine Kosten erfasst.</p>';
   $('#by-category').hidden = false;
 }
@@ -762,6 +761,17 @@ function sortContracts(list, sort = 'deadline') {
 // Seite „Verträge“: Filter und Sortierung, nach Status gruppiert
 const LIST_DEFAULTS = { status: 'all', category: '', account: '', sort: 'deadline' };
 function listFilters() { return { ...LIST_DEFAULTS, ...(settings.list || {}) }; }
+// Kategorie in der Übersicht antippen → Verträge, gefiltert nach dieser Kategorie
+$('#by-category').addEventListener('click', e => {
+  const row = e.target.closest('[data-category]');
+  if (!row) return;
+  settings.list = { ...listFilters(), status: 'all', account: '', category: row.dataset.category };
+  saveSettings();
+  renderContracts();
+  showView('contracts');
+  $('#view-contracts').scrollTo({ top: 0 });
+});
+
 function setListFilter(key, value) {
   settings.list = { ...listFilters(), [key]: value };
   saveSettings();
@@ -1873,7 +1883,7 @@ function updatePriceInfo(d) {
   const iv = (INTERVALS[d.interval] || INTERVALS.monthly).label;
   $('#price-now').innerHTML = `Aktuell gültig: <strong>${eur.format(cur.amount)}</strong>${cur.kind === 'renewal' ? ' (nach Verlängerung)' : ''}`
     + (next ? ` · ab ${fmtDate(next.from)}: <strong>${eur.format(next.amount)}</strong>${next.kind === 'renewal' ? ' (nach Verlängerung)' : ''}` : '')
-    + (avg ? `<span class="price-avg">Ø Durchschnitt ${fmtDate(avg.from)} – ${avg.open ? 'heute' : fmtDate(avg.to)}: <strong>${eur.format(avg.amount)}</strong> ${iv}</span>` : '');
+    + (avg ? `<span class="price-avg">Ø über die Mindestlaufzeit (${avg.months} Monate, ${fmtDate(avg.from)} – ${fmtDate(avg.to)}): <strong>${eur.format(avg.amount)}</strong> ${iv}</span>` : '');
 }
 
 /* Kündigungs-Ablauf: abgeschickt → bestätigt → ausgelaufen */

@@ -748,24 +748,6 @@ dialog.sheet.bottom-sheet#dlg-form.stacked { height: min(84dvh, 800px); }
   box-shadow: 0 1px 2px rgba(15, 23, 42, .12);
 }
 
-/* Kopfzeile: Schalter und Knöpfe als eine ruhige Gruppe, gleich hoch */
-.top-actions { align-items: center; gap: 2px !important; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .07); }
-.top-btn { width: 34px; height: 34px; border-radius: 50%; background: transparent; }
-.top-btn:hover { background: rgba(255, 255, 255, .1); }
-.top-btn svg { width: 19px; height: 19px; }
-.top-badge { top: -1px; right: -2px; }
-.theme-switch { width: 60px; height: 34px; margin-right: 2px; background: rgba(255, 255, 255, .09); }
-.theme-knob { width: 28px; height: 28px; }
-.theme-switch[aria-checked=true] .theme-knob { transform: translateX(26px); }
-.theme-ico { width: 27px; }
-@media (max-width: 380px) {
-  .top-btn { width: 32px; height: 32px; }
-  .theme-switch { width: 56px; height: 32px; }
-  .theme-knob { width: 26px; height: 26px; }
-  .theme-switch[aria-checked=true] .theme-knob { transform: translateX(24px); }
-  .theme-ico { width: 25px; height: 26px; }
-}
-
 /* Reiter: Pfeile, wenn links/rechts weitere Reiter versteckt sind */
 .form-tabs-wrap { position: relative; flex-shrink: 0; }
 .tabs-arrow {
@@ -796,8 +778,16 @@ dialog.sheet.bottom-sheet#dlg-form.stacked { height: min(84dvh, 800px); }
   .viewer-reset { padding: 0 7px; }
 }
 .price-avg { display: block; margin-top: 4px; color: var(--muted); }
-/* Feste Breite für die Beträge, damit alle Balken gleich lang sind (Prozente exakt untereinander) */
-.bar-row { grid-template-columns: minmax(90px, 160px) minmax(0, 1fr) 5.4em; }
+/* Breite Balken; Beträge rechtsbündig mit fester Breite, damit alle Balken gleich lang sind */
+.bar-row { grid-template-columns: minmax(70px, 130px) minmax(0, 1fr) 4.6em; gap: 8px; }
 .bar-value { text-align: right; }
-@media (max-width: 560px) { .bar-row { grid-template-columns: 90px minmax(0, 1fr) 5.4em; } }
+@media (max-width: 560px) { .bar-row { grid-template-columns: 78px minmax(0, 1fr) 4.6em; } }
+.bar-pct { font-size: .64rem; padding: 0 6px; }
+/* Kategorie antippen → Verträge mit dieser Kategorie */
+button.bar-row {
+  width: 100%; padding: 4px 6px; margin: -4px -6px; box-sizing: content-box; border: 0; border-radius: 10px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+button.bar-row:hover, button.bar-row:active { background: var(--surface-2); }
+button.bar-row:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 .bar-fill { display: block; }
