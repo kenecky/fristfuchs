@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.21.1';
 const STORAGE_KEY = 'vw.contracts.v1';
 const SETTINGS_KEY = 'vw.settings.v1';
 const NOTIFIED_KEY = 'vw.notified.v1';
@@ -2420,6 +2420,7 @@ updateNotifyState();
 // Bisherige Kontonamen einmalig als Konten übernehmen
 syncAccountsFromContracts();
 renderAll();
+window.__fristfuchsStarted = true;
 loadDocCounts().then(renderAll);
 migrateCustomLogos();
 updateStorageInfo();
